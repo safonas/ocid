@@ -16,7 +16,8 @@
 #   just ci           fmt-check + clippy + test + e2e
 #   just hooks        install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 #   just image        build the runtime container image (Containerfile)
-#   just clean        remove target volume + ./bin
+#   just pkg          build .deb + .rpm for the host arch into ./dist (via nfpm)
+#   just clean        remove target volume + ./bin + ./dist
 #
 # All dev recipes bind-mount the source tree (:Z for SELinux) and keep the
 # cargo registry and the target dir in named volumes so rebuilds are fast.
@@ -121,7 +122,37 @@ hooks:
 image:
     {{podman}} build -t {{image}} -f Containerfile .
 
+nfpm_image := "ghcr.io/goreleaser/nfpm:v2.47.0"
+
+# Build .deb + .rpm for the host architecture into ./dist (needs release binaries).
+pkg: release
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ver=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+    case "$(uname -m)" in
+        x86_64) nfpm_arch=amd64 ;;
+        aarch64) nfpm_arch=arm64 ;;
+        *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;;
+    esac
+    stage="dist/stage"
+    cfg="dist/nfpm-$nfpm_arch.yaml"
+    mkdir -p "$stage"
+    {{podman}} run --rm --userns=keep-id \
+        -v {{vol_target}}:/target \
+        -v {{justfile_directory()}}/dist:/out:Z \
+        {{rust_image}} sh -c "cp /target/release/ocid /target/release/ocictl /out/stage/"
+    sed -e "s|@@VERSION@@|$ver|g" -e "s|@@ARCH@@|$nfpm_arch|g" -e "s|@@STAGE@@|$stage|g" \
+        packaging/nfpm.yaml > "$cfg"
+    {{podman}} run --rm \
+        -v {{justfile_directory()}}:/work:Z -w /work \
+        {{nfpm_image}} package --config "$cfg" --packager deb --target dist/
+    {{podman}} run --rm \
+        -v {{justfile_directory()}}:/work:Z -w /work \
+        {{nfpm_image}} package --config "$cfg" --packager rpm --target dist/
+    rm -rf "$stage" "$cfg"
+    ls dist/
+
 # Remove target volume and ./bin.
 clean:
     -{{podman}} volume rm {{vol_target}}
-    rm -rf bin
+    rm -rf bin dist

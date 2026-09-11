@@ -70,6 +70,31 @@ jobs:
           GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
             -czf dist/ocid-linux-arm64.tar.gz -C target/aarch64-unknown-linux-gnu/release ocid ocictl
 
+      - name: Build .deb and .rpm packages
+        env:
+          NFPM_VERSION: v2.47.0
+        run: |
+          set -euo pipefail
+
+          curl -sSfL "https://github.com/goreleaser/nfpm/releases/download/${NFPM_VERSION}/nfpm_${NFPM_VERSION#v}_linux_amd64.tar.gz" \
+            | tar -xzf - -C /tmp nfpm
+          PKG_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+
+          for spec in "amd64:x86_64-unknown-linux-gnu" "arm64:aarch64-unknown-linux-gnu"; do
+            nfpm_arch=${spec%%:*}
+            target=${spec##*:}
+            stage="dist/stage"
+            cfg="dist/nfpm-${nfpm_arch}.yaml"
+            mkdir -p "$stage"
+            cp "target/${target}/release/ocid" "target/${target}/release/ocictl" "$stage/"
+            sed -e "s|@@VERSION@@|${PKG_VERSION}|g" -e "s|@@ARCH@@|${nfpm_arch}|g" -e "s|@@STAGE@@|${stage}|g" \
+              packaging/nfpm.yaml > "$cfg"
+            /tmp/nfpm package --config "$cfg" --packager deb --target dist/
+            /tmp/nfpm package --config "$cfg" --packager rpm --target dist/
+            rm -rf "$stage" "$cfg"
+          done
+          ls dist/
+
       # ========================================================
       #
       # Step 2: Add a step to generate the provenance subjects
@@ -84,7 +109,7 @@ jobs:
           set -euo pipefail
 
           cd dist
-          files=$(ls ocid-linux-* ocictl-linux-*)
+          files=$(ls ocid-linux-* ocictl-linux-* *.deb *.rpm)
           # Generate the subjects (base64 encoded).
           echo "digests=$(sha256sum $files | base64 -w0)" >> "${GITHUB_OUTPUT}"
 
