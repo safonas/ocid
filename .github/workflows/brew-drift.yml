@@ -40,12 +40,18 @@ jobs:
           tag="${{ steps.release.outputs.tag }}"
           expected_url="https://github.com/safonas/ocid/archive/refs/tags/${tag}.tar.gz"
           expected_sha=$(curl -sSL --retry 3 "$expected_url" | sha256sum | cut -d' ' -f1)
-          formula_url=$(grep '^  url ' tap/Formula/ocid.rb | cut -d'"' -f2)
-          formula_sha=$(grep '^  sha256 ' tap/Formula/ocid.rb | cut -d'"' -f2)
           echo "release: $expected_url @ $expected_sha"
-          echo "formula: $formula_url @ $formula_sha"
-          if [ "$formula_url" != "$expected_url" ] || [ "$formula_sha" != "$expected_sha" ]; then
-            echo "::error::tap formula is stale: run 'just brew' and push safonas/homebrew-tap"
-            exit 1
-          fi
-          echo "tap is in sync with $tag"
+          for i in $(seq 1 6); do
+            git -C tap fetch -q origin main
+            git -C tap checkout -q origin/main
+            formula_url=$(grep '^  url ' tap/Formula/ocid.rb | cut -d'"' -f2)
+            formula_sha=$(grep '^  sha256 ' tap/Formula/ocid.rb | cut -d'"' -f2)
+            echo "attempt $i formula: $formula_url @ $formula_sha"
+            if [ "$formula_url" = "$expected_url" ] && [ "$formula_sha" = "$expected_sha" ]; then
+              echo "tap is in sync with $tag"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::tap formula is stale: run 'just brew' and push safonas/homebrew-tap"
+          exit 1

@@ -82,12 +82,8 @@ git push github main
 git tag -a "$tag" -m "Release $tag"
 git push github "$tag"
 
-# 5. Create GitHub release (triggers SLSA generic generator)
-echo "==> [5/6] Creating GitHub release for $tag..."
-gh release create "$tag" --target main --title "$tag" --generate-notes
-
-# 6. Update and push Homebrew tap
-echo "==> [6/6] Updating Homebrew tap..."
+# 5. Update and push Homebrew tap (before release event fires drift check)
+echo "==> [5/6] Updating Homebrew tap..."
 archive_url="https://github.com/safonas/ocid/archive/refs/tags/${tag}.tar.gz"
 
 echo "    Waiting for tag archive on GitHub..."
@@ -133,7 +129,11 @@ fi
 
 git -C "$tap" commit -am "ocid: bump to $tag"
 git -C "$tap" push origin main
-echo "==> Homebrew tap updated and pushed to origin/main."
+echo "    Homebrew tap updated and pushed to origin/main."
+
+# 6. Create GitHub release (triggers SLSA generic generator and drift check)
+echo "==> [6/6] Creating GitHub release for $tag..."
+gh release create "$tag" --target main --title "$tag" --generate-notes
 
 echo ""
 echo "Release $tag complete!"
