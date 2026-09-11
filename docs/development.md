@@ -39,6 +39,13 @@ referrers check). It covers publish → replicate → run, on-demand pull,
 Range/DELETE/metrics, follow/seed/pin windows with pruning, aliases, GC and
 offline `ocictl`.
 
+## Security scanning
+
+Vulnerability scanning runs in CI (`.github/workflows/security.yml`): Trivy
+scans the container image and working tree, and OpenSSF Scorecard reviews the
+repository. See [SECURITY.md](../SECURITY.md) for reporting and local scan
+commands.
+
 ## Runtime container image
 
 ```sh
@@ -48,8 +55,9 @@ podman exec ocid ocictl status
 
 The `Containerfile` is a multi-stage build: the pinned Rust builder compiles
 release binaries with `SOURCE_DATE_EPOCH` and path remapping for bit-for-bit
-reproducible output, then the pinned `debian:bookworm-slim` runtime stage
-copies in just the two binaries and runs as the `ocid` user.
+reproducible output, then the pinned Wolfi (`wolfi-base`) runtime stage
+copies in just the three binaries and runs as the `ocid` user. Wolfi is a
+rolling base, so re-pin `RUNTIME_IMAGE` regularly to pick up fresh fixes.
 
 ## Native packages
 
