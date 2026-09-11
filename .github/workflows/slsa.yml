@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          curl -sSfL "https://github.com/goreleaser/nfpm/releases/download/${NFPM_VERSION}/nfpm_${NFPM_VERSION#v}_linux_amd64.tar.gz" \
+          curl -sSfL "https://github.com/goreleaser/nfpm/releases/download/${NFPM_VERSION}/nfpm_${NFPM_VERSION#v}_Linux_x86_64.tar.gz" \
             | tar -xzf - -C /tmp nfpm
           PKG_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
 
