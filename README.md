@@ -244,6 +244,12 @@ See [docs/development.md](docs/development.md) for the full contributor guide
 (`just` recipes, e2e tests, reproducible container builds, `.deb`/`.rpm`
 packaging, git hooks).
 
+## Security
+
+Vulnerability reports are handled privately — see [SECURITY.md](SECURITY.md).
+Container images and Rust dependencies are scanned for vulnerabilities in CI
+([`.github/workflows/security.yml`](.github/workflows/security.yml)).
+
 ## Status
 
 Early prototype, tested end-to-end (`just e2e`). Current focus is getting

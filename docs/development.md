@@ -39,6 +39,13 @@ referrers check). It covers publish → replicate → run, on-demand pull,
 Range/DELETE/metrics, follow/seed/pin windows with pruning, aliases, GC and
 offline `ocictl`.
 
+## Security scanning
+
+Vulnerability scanning runs in CI (`.github/workflows/security.yml`): Trivy
+scans the container image and working tree, and OpenSSF Scorecard reviews the
+repository. See [SECURITY.md](../SECURITY.md) for reporting and local scan
+commands.
+
 ## Runtime container image
 
 ```sh
