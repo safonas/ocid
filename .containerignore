@@ -1,0 +1,7 @@
+target/
+.git/
+.dev/
+bin/
+*.md
+!README.md
+justfile

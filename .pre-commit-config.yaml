@@ -1,0 +1,58 @@
+# Git hooks. Install with `just hooks` (needs `pre-commit` on the host).
+#
+# Rust checks run through `just`, i.e. inside the podman build container, so
+# nothing but podman, just, pre-commit and shellcheck is needed on the host.
+# Fast checks run on commit; the test suite runs on push.
+
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^LICENSE$
+      - id: end-of-file-fixer
+        exclude: ^LICENSE$
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  - repo: local
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        language: system
+        types: [shell]
+        args: [--severity=warning]
+
+      - id: cargo-fmt
+        name: cargo fmt --check
+        entry: just fmt-check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy -D warnings
+        entry: just clippy
+        language: system
+        files: \.(rs|toml)$|^Cargo\.lock$
+        pass_filenames: false
+
+      - id: cargo-test
+        name: cargo test
+        entry: just test
+        language: system
+        files: \.(rs|toml)$|^Cargo\.lock$
+        pass_filenames: false
+        stages: [pre-push]

@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = ["crates/ocid-core", "crates/ocid", "crates/ocictl"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/safonas/ocid"
+authors = ["ocid contributors"]
+
+[workspace.dependencies]
+ocid-core = { path = "crates/ocid-core" }
+
+# p2p
+iroh = "1.2"
+iroh-base = { version = "1.2", features = ["key"] }
+iroh-blobs = { version = "0.103", features = ["fs-store"] }
+iroh-gossip = { version = "0.101", features = ["net"] }
+iroh-tickets = "1"
+iroh-metrics = { version = "1", features = ["metrics"] }
+iroh-mdns-address-lookup = "0.5"
+n0-future = "0.3"
+blake3 = "1"
+
+# async / http
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+axum = { version = "0.8", features = ["http1", "json", "query"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+bytes = "1"
+
+# cli
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+comfy-table = "7"
+
+# data
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+postcard = { version = "1", features = ["use-std"] }
+sha2 = "0.10"
+hex = "0.4"
+bs58 = "0.5"
+uuid = { version = "1", features = ["v4"] }
+dirs = "6"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

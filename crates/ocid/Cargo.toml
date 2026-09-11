@@ -1,0 +1,40 @@
+[package]
+name = "ocid"
+description = "ocid daemon: p2p endpoint, replication, local OCI registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "ocid"
+path = "src/main.rs"
+
+[dependencies]
+ocid-core = { workspace = true }
+
+iroh = { workspace = true }
+iroh-blobs = { workspace = true }
+iroh-gossip = { workspace = true }
+iroh-tickets = { workspace = true }
+iroh-metrics = { workspace = true }
+iroh-mdns-address-lookup = { workspace = true }
+n0-future = { workspace = true }
+blake3 = { workspace = true }
+
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+axum = { workspace = true }
+bytes = { workspace = true }
+
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+postcard = { workspace = true }
+sha2 = { workspace = true }
+uuid = { workspace = true }

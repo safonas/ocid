@@ -1,0 +1,195 @@
+# ocid
+
+Local-first, peer-to-peer distribution of OCI container images — think
+[Radicle](https://radicle.xyz), but for `podman push`/`podman pull`.
+
+* **No registry server.** Every node runs a tiny OCI registry on
+  `localhost:5050` that podman/docker/crane/oras talk to. Behind it, images
+  are stored content-addressed and exchanged directly between peers over
+  [iroh](https://iroh.computer) (QUIC, hole-punching, optional relays, mDNS on
+  the LAN).
+* **Identity = keypair.** Your Ed25519 key is both your iroh endpoint id and
+  your publisher id. Every push produces a *signed release record* binding
+  `name:tag` to a manifest digest. Peers verify signatures, BLAKE3 streams
+  and sha256 digests — providers are never trusted.
+* **Replication by policy, not by accident.** `follow` a publisher, `seed` an
+  image, `pin` a release. Each rule says how much history to keep
+  (`latest`, `last:N`, `full`); anything outside the window is pruned,
+  anything you pulled ad hoc is cache that GC reclaims after a grace period.
+
+Design details with diagrams: [docs/DESIGN.md](docs/DESIGN.md).
+
+## Two binaries
+
+| binary | role |
+|---|---|
+| `ocid` | the daemon: iroh endpoint, gossip, blob store, OCI registry + control API + metrics on one loopback port |
+| `ocictl` | the CLI: talks to the daemon over `http://127.0.0.1:5050/_ocid/*`; edits `policy.toml`; works offline for `ls`, `whoami`, `policy` |
+
+Both share the library crate `ocid-core` (identity, release records, policy,
+on-disk index, API types).
+
+## Quick start
+
+Everything builds inside podman; only `podman` and `just` are needed on the host.
+
+```sh
+just bin                      # debug build -> ./bin/ocid, ./bin/ocictl
+./bin/ocid                    # first run creates ~/.ocid (or $OCID_HOME) and prints your id + ticket
+```
+
+Publish (another shell):
+
+```sh
+podman push --tls-verify=false docker.io/library/alpine:latest 127.0.0.1:5050/alpine:3
+./bin/ocictl ls
+```
+
+Consume on a second node (bootstrap with the first node's ticket from
+`ocictl ticket`; on the same LAN mDNS finds it without a ticket):
+
+```sh
+OCID_HOME=~/.ocid-b ocid --listen 127.0.0.1:5051 --peer <ticket>
+OCID_HOME=~/.ocid-b ocictl follow <publisher>          # replicate their newest releases
+podman pull --tls-verify=false 127.0.0.1:5051/<publisher-hex>/alpine:3
+```
+
+Pulling an image nobody told you about also works: the registry asks its
+peers on demand and keeps the result as cache.
+
+## Naming (hybrid scheme)
+
+Registry paths cannot contain uppercase, so the publisher appears as the
+64-char hex endpoint id; on the CLI both hex and `did:key:z6Mk…` are accepted.
+
+| form | example | meaning |
+|---|---|---|
+| explicit | `localhost:5050/<hex>/app:1.0` | publisher `<hex>`, image `app` |
+| publisher alias | `localhost:5050/alice/app:1.0` | after `ocictl track <hex> --as alice` |
+| image alias | `localhost:5050/team-app:1.0` | after `ocictl track <hex>/app --as team-app` |
+| implicit | `localhost:5050/app:1.0` | **your own** publisher (what you push to) |
+
+## Policy: what a node keeps
+
+`policy.toml` is the whole story of what your node replicates and serves:
+
+```toml
+[[follow]]                 # every image alice publishes, newest release of each
+publisher = "<alice-hex>"
+
+[[seed]]                   # one image, last 3 releases
+ref  = "<alice-hex>/app"
+mode = "last:3"
+
+[[seed]]                   # exactly this tag
+ref  = "<bob-hex>/tools:1.4"
+
+pin = ["<alice-hex>/app:1.0"]   # always fetched, never pruned or collected
+
+[alias]
+alice = "<alice-hex>"
+```
+
+* Modes: `latest` (default), `last:N`, `full`. Rules for the same image
+  combine to the widest window; explicit tags and pins are added on top.
+* Releases outside the window are **pruned immediately** when a newer one
+  arrives or the policy shrinks. Your own releases are always kept.
+* Everything else you hold (on-demand pulls, images you unfollowed) is
+  **cache**: kept while it is younger than `gc_grace_secs` (default 24 h),
+  then removed by the periodic GC (`gc_interval_secs`, default 1 h) or by
+  `ocictl gc --force`.
+
+## CLI
+
+```
+ocid [--home DIR] [--listen ADDR] [--peer TICKET]... [--no-relay] [--no-metrics]
+
+ocictl init | whoami | status | ticket | peers
+ocictl connect <ticket>                     add a peer and join gossip with it
+ocictl ls                                   images held locally, with the rule that keeps each one
+ocictl pull <ref>                           fetch a release from the swarm (as cache)
+ocictl publish [<ref>]                      (re-)announce your releases
+ocictl follow <pub> [--latest|--last N|--full] | unfollow <pub>
+ocictl seed <ref>  [--latest|--last N|--full] | unseed <ref>
+ocictl pin <ref>:<tag> | unpin <ref>:<tag>
+ocictl track <target> --as <alias> | untrack <alias>
+ocictl policy                               print policy.toml
+ocictl sync [<peer>]                        replicate from peers now
+ocictl rm <ref>[:<tag>] [--all]             drop a release locally (not propagated)
+ocictl gc [--dry-run] [--force]             prune + reclaim blobs now
+```
+
+`<ref>` is `[<publisher>/]<name>[:<tag>]`; `<publisher>` is hex, `did:key`
+or an alias. `--listen`/`--no-relay`/`--no-metrics` are persisted into
+`config.toml` so `ocictl` finds the daemon.
+
+## Registry surface
+
+The embedded registry implements enough of the OCI distribution spec for the
+usual tools:
+
+* manifests `GET/HEAD/PUT/DELETE` (delete by tag, or every tag of a digest;
+  a delete is local and un-publishes the release), blobs `GET/HEAD` with
+  **Range** requests, chunked/monolithic uploads, `_catalog`, `tags/list`.
+* **Referrers API** (`GET /v2/<name>/referrers/<digest>[?artifactType=]`):
+  manifests with a `subject` are attached to the release they refer to and
+  replicate with it, so `oras attach` on one node is visible through
+  `oras discover` on another.
+* `DELETE` on a blob is 405: blobs are reclaimed by GC, not by clients.
+* `GET /metrics`: OpenMetrics text (`ocid_*` counters/gauges for HTTP,
+  replication, gossip, GC; plus iroh's own `iroh_*` metrics).
+* `/_ocid/*`: the JSON control API `ocictl` uses.
+
+No authentication: bind to loopback (the default). Anyone who can reach the
+port can push as you — same trust model as the podman socket.
+
+## Layout on disk (`$OCID_HOME`, default `~/.ocid`)
+
+```
+secret.key                      ed25519 secret (0600)
+config.toml                     listen, relay, p2p_port, mdns, metrics, gc_*_secs
+policy.toml                     follow / seed / pin / alias
+peers.json                      known peer addresses (bootstrap)
+blobs/                          iroh-blobs store (BLAKE3-addressed, verified, own GC)
+index/digests/<sha256>.json     sha256 -> blake3, size, media type
+index/releases/<pub>/<name>/<tag>.json      signed release records
+index/referrers/<subject>/<digest>.json     referrer manifests by subject
+uploads/                        in-flight registry uploads
+```
+
+## Development
+
+```sh
+just             # list recipes
+just check       # cargo check in the build container
+just test        # unit tests
+just clippy      # lints
+just fmt         # rustfmt
+just bin         # debug build -> ./bin/{ocid,ocictl}
+just e2e         # build, then scripts/e2e.sh: two daemons on this host, driven by podman/curl/ocictl
+just ci          # fmt --check, clippy -D warnings, tests, e2e
+just image       # runtime image: podman build -> localhost/ocid:dev
+```
+
+`scripts/e2e.sh` needs `podman`, `curl`, `jq` on the host (`oras` enables the
+referrers check). It covers publish → replicate → run, on-demand pull,
+Range/DELETE/metrics, follow/seed/pin windows with pruning, aliases, GC and
+offline `ocictl`.
+
+Run the runtime image (state in a volume, registry on the host's 5050):
+
+```sh
+podman run -d --name ocid -p 127.0.0.1:5050:5050 -v ocid-data:/data localhost/ocid:dev
+podman exec ocid ocictl status
+```
+
+## Status
+
+Prototype, tested end-to-end (`just e2e`). Known gaps:
+
+* no auth on the local registry — keep it on loopback
+* delegation / multi-key publishers (Radicle "delegates") is deferred: one
+  key is one publisher
+* relay and public discovery use the n0 infrastructure by default; use
+  `--no-relay` and tickets/mDNS for fully offline swarms
+* `ocictl … | head` prints a broken-pipe panic (SIGPIPE is not reset)
