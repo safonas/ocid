@@ -134,6 +134,9 @@ jobs:
         with:
           targets: x86_64-apple-darwin
 
+      - name: Verify cross-compile target
+        run: rustup target list --installed
+
       - name: Build artifacts
         run: |
           set -euo pipefail
