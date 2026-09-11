@@ -17,6 +17,7 @@
 #   just hooks        install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 #   just image        build the runtime container image (Containerfile)
 #   just pkg          build .deb + .rpm for the host arch into ./dist (via nfpm)
+#   just brew         verify the Homebrew tap formula (checkout in .dev, install from local file)
 #   just clean        remove target volume + ./bin + ./dist
 #
 # All dev recipes bind-mount the source tree (:Z for SELinux) and keep the
@@ -152,6 +153,41 @@ pkg: release
         {{nfpm_image}} package --config "$cfg" --packager rpm --target dist/
     rm -rf "$stage" "$cfg"
     ls dist/
+
+# Verify the Homebrew formula end-to-end: sync safonas/homebrew-tap into
+# .dev (scratch dir, reset to origin/main every run — never /tmp), bump
+# url/sha256 to the current Cargo.toml version, then install from the local
+# formula file and smoke-test both binaries. Pushing the tap is manual:
+# git -C .dev/homebrew-tap push
+brew:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    command -v brew >/dev/null || { echo "brew not found on PATH" >&2; exit 1; }
+    tap=".dev/homebrew-tap"
+    ver=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+    url="https://github.com/safonas/ocid/archive/refs/tags/v$ver.tar.gz"
+    if [ -d "$tap/.git" ]; then
+        git -C "$tap" fetch -q origin
+        git -C "$tap" checkout -q main
+        git -C "$tap" reset -q --hard origin/main
+    else
+        git clone -q git@github.com:safonas/homebrew-tap.git "$tap"
+    fi
+    if [ "$(curl -sSL -o /dev/null -w '%{http_code}' "$url")" != "200" ]; then
+        echo "tag v$ver not published on GitHub yet (archive 404); push the tag first" >&2
+        exit 1
+    fi
+    sha=$(curl -sSL "$url" | sha256sum | cut -d' ' -f1)
+    sed -i -e "s|^  url .*|  url \"$url\"|" -e "s|^  sha256 .*|  sha256 \"$sha\"|" "$tap/Formula/ocid.rb"
+    git -C "$tap" diff -- Formula/ocid.rb || true
+    if brew list ocid >/dev/null 2>&1; then
+        brew reinstall "$tap/Formula/ocid.rb"
+    else
+        brew install "$tap/Formula/ocid.rb"
+    fi
+    ocid --version
+    ocictl --version
 
 # Remove target volume and ./bin.
 clean:

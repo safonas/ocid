@@ -25,6 +25,7 @@ just e2e         # build, then scripts/e2e.sh: two daemons on this host, driven 
 just ci          # fmt --check, clippy -D warnings, tests, e2e
 just image       # runtime image: podman build -> localhost/ocid:dev
 just pkg         # .deb + .rpm for the host arch into ./dist (via pinned nfpm)
+just brew        # verify the Homebrew tap formula (checkout in .dev, install from local file)
 just hooks       # install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 just clean       # remove target volume, ./bin, ./dist
 ```
@@ -56,6 +57,20 @@ copies in just the two binaries and runs as the `ocid` user.
 (`packaging/systemd/ocid.service`) and maintainer scripts
 (`packaging/scripts/`). Releases build both `amd64` and `arm64` packages in CI
 (see `.github/workflows/slsa.yml`).
+
+## Homebrew tap
+
+Releases are distributed via `safonas/homebrew-tap` (`brew install
+safonas/tap/ocid`). `just brew` verifies the formula without touching
+system-wide `/tmp`: it syncs the tap into `.dev/homebrew-tap` (reset to
+`origin/main` on every run), bumps `url`/`sha256` to the current `Cargo.toml`
+version (the `v<ver>` tag must already be pushed to GitHub), installs from the
+local formula file, and smoke-tests both binaries. If the formula changed,
+commit and push it from the checkout:
+
+```sh
+git -C .dev/homebrew-tap commit -am "ocid: bump to vX.Y.Z" && git -C .dev/homebrew-tap push
+```
 
 ## Git hooks
 
