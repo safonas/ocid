@@ -40,6 +40,12 @@ Managed by `.pre-commit-config.yaml`.
 - Pre-commit: whitespace, YAML/TOML/JSON sanity, large file check, shellcheck, `just fmt-check`, `just clippy`.
 - Pre-push: `just test`.
 
+### Versioning and tagging
+
+- The workspace version lives in the root `Cargo.toml` (`Cargo.lock` follows via `just check`).
+- Before creating a **major or minor** version tag, always ask first and suggest the next version — do not tag unilaterally.
+- **Patch** tags are fine without asking, provided the changes are miniscule (docs, comments, tiny fixes, digest pins).
+
 ## Model routing & cost guidelines
 
 - When configuring agents or invoking sub-tasks, default to cheaper/faster models for repetitive tasks (e.g. searching, file exploration, formatting, simple edits, reading error messages).

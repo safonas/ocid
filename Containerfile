@@ -6,14 +6,16 @@
 #   podman run -d --name ocid -p 5050:5050 -v ocid-data:/data ocid
 #   podman exec ocid ocictl status
 #
-ARG RUST_VERSION=1.98.1
-ARG DEBIAN_RELEASE=bookworm
+# Base images are pinned by digest for reproducible builds; the tag is kept
+# for readability. Override with --build-arg if needed.
+ARG BUILDER_IMAGE=docker.io/library/rust:1.98.1-slim-bookworm@sha256:ebd900bae66fd508b466cef82d64a83a5fb34682e4c8b2797a42908bddc95a57
+ARG RUNTIME_IMAGE=docker.io/library/debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
 ARG SOURCE_DATE_EPOCH=1726012800
 
 # ---------------------------------------------------------------------------
 # builder
 # ---------------------------------------------------------------------------
-FROM docker.io/library/rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} AS builder
+FROM ${BUILDER_IMAGE} AS builder
 
 ENV SOURCE_DATE_EPOCH=1726012800
 ENV RUSTFLAGS="--remap-path-prefix=/src=/build"
@@ -44,7 +46,7 @@ RUN find crates -name '*.rs' -exec touch -d @${SOURCE_DATE_EPOCH} {} + && cargo 
 # ---------------------------------------------------------------------------
 # runtime
 # ---------------------------------------------------------------------------
-FROM docker.io/library/debian:${DEBIAN_RELEASE}-slim AS runtime
+FROM ${RUNTIME_IMAGE} AS runtime
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \

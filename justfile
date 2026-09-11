@@ -25,7 +25,8 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 podman       := env("PODMAN", "podman")
-rust_image   := env("RUST_IMAGE", "docker.io/library/rust:1.98.1-slim-bookworm")
+# Builder image pinned by digest for reproducible builds (override via RUST_IMAGE env).
+rust_image   := env("RUST_IMAGE", "docker.io/library/rust:1.98.1-slim-bookworm@sha256:ebd900bae66fd508b466cef82d64a83a5fb34682e4c8b2797a42908bddc95a57")
 image        := env("IMAGE", "localhost/ocid:dev")
 project      := "ocid"
 vol_registry := project + "-cargo-registry"
@@ -122,7 +123,7 @@ hooks:
 image:
     {{podman}} build -t {{image}} -f Containerfile .
 
-nfpm_image := "ghcr.io/goreleaser/nfpm:v2.47.0"
+nfpm_image := "ghcr.io/goreleaser/nfpm:v2.47.0@sha256:a662cb167d7b6d3a83920c83d76b12d02b8ac5dd2c13e5c62c15270b23f6df0c"
 
 # Build .deb + .rpm for the host architecture into ./dist (needs release binaries).
 pkg: release

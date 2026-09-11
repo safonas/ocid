@@ -18,6 +18,7 @@ Local-first, peer-to-peer distribution of OCI container images — think
   anything you pulled ad hoc is cache that GC reclaims after a grace period.
 
 Design details with diagrams: [docs/DESIGN.md](docs/DESIGN.md).
+Topologies and use cases: [docs/pitch.md](docs/pitch.md).
 
 ## Two binaries
 
@@ -207,29 +208,9 @@ uploads/                        in-flight registry uploads
 
 ## Development
 
-```sh
-just             # list recipes
-just check       # cargo check in the build container
-just test        # unit tests
-just clippy      # lints
-just fmt         # rustfmt
-just bin         # debug build -> ./bin/{ocid,ocictl}
-just e2e         # build, then scripts/e2e.sh: two daemons on this host, driven by podman/curl/ocictl
-just ci          # fmt --check, clippy -D warnings, tests, e2e
-just image       # runtime image: podman build -> localhost/ocid:dev
-```
-
-`scripts/e2e.sh` needs `podman`, `curl`, `jq` on the host (`oras` enables the
-referrers check). It covers publish → replicate → run, on-demand pull,
-Range/DELETE/metrics, follow/seed/pin windows with pruning, aliases, GC and
-offline `ocictl`.
-
-Run the runtime image (state in a volume, registry on the host's 5050):
-
-```sh
-podman run -d --name ocid -p 127.0.0.1:5050:5050 -v ocid-data:/data localhost/ocid:dev
-podman exec ocid ocictl status
-```
+See [docs/development.md](docs/development.md) for the full contributor guide
+(`just` recipes, e2e tests, reproducible container builds, `.deb`/`.rpm`
+packaging, git hooks).
 
 ## Status
 
