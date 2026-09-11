@@ -1,8 +1,12 @@
 # ocid — design
 
-Radicle's model mapped onto OCI images: keys are identities, signed records
-carry trust, replication follows a local policy, and the existing toolchain
-(podman/docker/oras) is bridged through a local daemon.
+`ocid` is a local-first, peer-to-peer alternative to centralized OCI
+registries: every node runs a loopback OCI registry that standard tooling
+(`podman`/`docker`/`oras`) talks to unchanged, while peers exchange signed,
+content-addressed releases directly.
+
+The design borrows Radicle's model — keys are identities, signed records
+carry trust, replication follows a local policy — mapped onto OCI images:
 
 | Radicle | ocid |
 |---|---|
