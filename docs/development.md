@@ -72,6 +72,12 @@ commit and push it from the checkout:
 git -C .dev/homebrew-tap commit -am "ocid: bump to vX.Y.Z" && git -C .dev/homebrew-tap push
 ```
 
+A release-triggered CI job (`.github/workflows/brew-drift.yml`, also manually
+dispatchable) asserts the tap formula's `url`/`sha256` match the latest GitHub
+release and fails loudly on drift. It is check-only — no full `brew install`
+build in CI (that duplicates the SLSA release build); the real build test is
+`just brew` locally before pushing the tap.
+
 ## Git hooks
 
 Managed by `.pre-commit-config.yaml` (install with `just hooks`):

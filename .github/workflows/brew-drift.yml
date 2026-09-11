@@ -1,0 +1,51 @@
+name: Homebrew tap drift check
+
+# Verifies safonas/homebrew-tap tracks the latest ocid release.
+# Fails loudly on mismatch; the fix is `just brew` + pushing the tap.
+# Deliberately check-only: no cross-repo write token required, and it does
+# not wait for the SLSA asset build (the source tarball exists at publish).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+          else
+            tag=$(gh release view --repo safonas/ocid --json tagName --jq .tagName)
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the tap (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: safonas/homebrew-tap
+          path: tap
+
+      - name: Compare formula against release
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.tag }}"
+          expected_url="https://github.com/safonas/ocid/archive/refs/tags/${tag}.tar.gz"
+          expected_sha=$(curl -sSL --retry 3 "$expected_url" | sha256sum | cut -d' ' -f1)
+          formula_url=$(grep '^  url ' tap/Formula/ocid.rb | cut -d'"' -f2)
+          formula_sha=$(grep '^  sha256 ' tap/Formula/ocid.rb | cut -d'"' -f2)
+          echo "release: $expected_url @ $expected_sha"
+          echo "formula: $formula_url @ $formula_sha"
+          if [ "$formula_url" != "$expected_url" ] || [ "$formula_sha" != "$expected_sha" ]; then
+            echo "::error::tap formula is stale: run 'just brew' and push safonas/homebrew-tap"
+            exit 1
+          fi
+          echo "tap is in sync with $tag"
