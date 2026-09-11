@@ -25,6 +25,7 @@ blake3 = { workspace = true }
 
 tokio = { workspace = true }
 tokio-util = { workspace = true }
+tokio-stream = { workspace = true }
 axum = { workspace = true }
 bytes = { workspace = true }
 

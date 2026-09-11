@@ -13,6 +13,7 @@ and signed release records.
 - `crates/ocid-core`: library crate. Identity (`Ed25519` keypair = iroh `EndpointId` = publisher id), release signing/verification, OCI types, retention policy windows, on-disk index, API DTOs.
 - `crates/ocid`: the daemon binary (`ocid`). Runs iroh endpoint, gossip, blob store, OCI registry + `/_ocid/*` control API + `/metrics` OpenMetrics.
 - `crates/ocictl`: the CLI binary (`ocictl`). Interacts with the daemon over HTTP, manages `policy.toml`, supports offline inspection (`ls`, `whoami`, `policy`).
+- `crates/ocitop`: the TUI monitor binary (`ocitop`). Interactive terminal dashboard for daemon status, releases, peers, and real-time SSE events.
 - `scripts/e2e.sh`: multi-node end-to-end integration test runner.
 - `docs/DESIGN.md`: architectural design, data models, sequences, and trust boundaries.
 
@@ -29,7 +30,7 @@ execute inside a container with cached volumes and proper `:Z` SELinux bind moun
 - `just clippy`: run lints with warnings-as-errors (`cargo clippy --all-targets -- -D warnings`)
 - `just fmt`: format Rust code (`cargo fmt`)
 - `just fmt-check`: verify Rust formatting without modifying files
-- `just bin`: build and copy debug binaries to `./bin/{ocid,ocictl}`
+- `just bin`: build and copy debug binaries to `./bin/{ocid,ocictl,ocitop}`
 - `just e2e`: build binaries and run full end-to-end test suite (`scripts/e2e.sh`)
 - `just ci`: run `fmt-check` + `clippy` + `test` + `e2e` (all CI checks)
 - `just hooks`: install git pre-commit and pre-push hooks

@@ -18,6 +18,7 @@
 #   just image        build the runtime container image (Containerfile)
 #   just pkg          build .deb + .rpm for the host arch into ./dist (via nfpm)
 #   just brew         verify the Homebrew tap formula (checkout in .dev, install from local file)
+#   just brew-local   brew-install the current working tree (no tag needed) for local testing
 #   just clean        remove target volume + ./bin + ./dist
 #
 # All dev recipes bind-mount the source tree (:Z for SELinux) and keep the
@@ -104,8 +105,8 @@ bin: build
     {{podman}} run --rm --userns=keep-id \
         -v {{vol_target}}:/target \
         -v {{justfile_directory()}}/bin:/out:Z \
-        {{rust_image}} sh -c 'for b in ocid ocictl; do cp /target/debug/$b /out/.$b.new && mv -f /out/.$b.new /out/$b; done'
-    @echo "-> bin/ocid bin/ocictl"
+        {{rust_image}} sh -c 'for b in ocid ocictl ocitop; do cp /target/debug/$b /out/.$b.new && mv -f /out/.$b.new /out/$b; done'
+    @echo "-> bin/ocid bin/ocictl bin/ocitop"
 
 # End-to-end tests: two daemons on the host driven by podman/curl/ocictl.
 e2e: bin
@@ -142,7 +143,7 @@ pkg: release
     {{podman}} run --rm --userns=keep-id \
         -v {{vol_target}}:/target \
         -v {{justfile_directory()}}/dist:/out:Z \
-        {{rust_image}} sh -c "cp /target/release/ocid /target/release/ocictl /out/stage/"
+        {{rust_image}} sh -c "cp /target/release/ocid /target/release/ocictl /target/release/ocitop /out/stage/"
     sed -e "s|@@VERSION@@|$ver|g" -e "s|@@ARCH@@|$nfpm_arch|g" -e "s|@@STAGE@@|$stage|g" \
         packaging/nfpm.yaml > "$cfg"
     {{podman}} run --rm \
@@ -154,40 +155,79 @@ pkg: release
     rm -rf "$stage" "$cfg"
     ls dist/
 
-# Verify the Homebrew formula end-to-end: sync safonas/homebrew-tap into
-# .dev (scratch dir, reset to origin/main every run — never /tmp), bump
-# url/sha256 to the current Cargo.toml version, then install from the local
-# formula file and smoke-test both binaries. Pushing the tap is manual:
-# git -C .dev/homebrew-tap push
+# Verify the Homebrew tap formula end-to-end. Homebrew only installs formulae
+# that live in a tap, so this works inside the tapped checkout of
+# safonas/homebrew-tap (`brew --repository safonas/tap`, tapped on demand),
+# reset to origin/main every run: bump url/sha256 to the current Cargo.toml
+# version (the v<ver> tag must already be on GitHub), reinstall from the tap
+# and smoke-test the binaries. Pushing the tap is manual:
+#   git -C "$(brew --repository safonas/tap)" commit -am "ocid: bump to vX.Y.Z" && git -C "$(brew --repository safonas/tap)" push
 brew:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{justfile_directory()}}"
     command -v brew >/dev/null || { echo "brew not found on PATH" >&2; exit 1; }
-    tap=".dev/homebrew-tap"
+    brew tap safonas/tap >/dev/null 2>&1 || true
+    tap=$(brew --repository safonas/tap)
     ver=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
     url="https://github.com/safonas/ocid/archive/refs/tags/v$ver.tar.gz"
-    if [ -d "$tap/.git" ]; then
-        git -C "$tap" fetch -q origin
-        git -C "$tap" checkout -q main
-        git -C "$tap" reset -q --hard origin/main
-    else
-        git clone -q git@github.com:safonas/homebrew-tap.git "$tap"
-    fi
+    git -C "$tap" fetch -q origin && git -C "$tap" checkout -q main && git -C "$tap" reset -q --hard origin/main
     if [ "$(curl -sSL -o /dev/null -w '%{http_code}' "$url")" != "200" ]; then
         echo "tag v$ver not published on GitHub yet (archive 404); push the tag first" >&2
         exit 1
     fi
     sha=$(curl -sSL "$url" | sha256sum | cut -d' ' -f1)
     sed -i -e "s|^  url .*|  url \"$url\"|" -e "s|^  sha256 .*|  sha256 \"$sha\"|" "$tap/Formula/ocid.rb"
-    git -C "$tap" diff -- Formula/ocid.rb || true
-    if brew list ocid >/dev/null 2>&1; then
-        brew reinstall "$tap/Formula/ocid.rb"
-    else
-        brew install "$tap/Formula/ocid.rb"
+    if ! grep -q 'crates/ocitop' "$tap/Formula/ocid.rb"; then
+        sed -i -e '/crates\/ocictl/a\    system "cargo", "install", *std_cargo_args(path: "crates/ocitop")' "$tap/Formula/ocid.rb"
     fi
-    ocid --version
-    ocictl --version
+    git -C "$tap" --no-pager diff -- Formula/ocid.rb || true
+    brew uninstall --ignore-dependencies ocid >/dev/null 2>&1 || true
+    brew install --formula safonas/tap/ocid
+    ocid --version; ocictl --version; ocitop --version
+
+# Install the *working tree* through Homebrew for local testing (no tag or
+# commit needed). Homebrew 6 refuses loose formula files, so this keeps a
+# private local tap `safonas/local` (created on demand, never pushed) whose
+# `ocid` formula points at a tarball of the checkout in .dev via file://.
+# Replaces any installed `ocid` (from the real tap); `just brew` swaps back.
+brew-local:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    command -v brew >/dev/null || { echo "brew not found on PATH" >&2; exit 1; }
+    ver=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+    out=".dev/brew"; mkdir -p "$out"
+    tarball="$PWD/$out/ocid-$ver-local.tar.gz"
+    # tracked + untracked-but-not-ignored files that exist, deterministic layout
+    git ls-files -co --exclude-standard -z | while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done \
+        | tar --null -T - --transform "s,^,ocid-$ver/," -czf "$tarball"
+    sha=$(sha256sum "$tarball" | cut -d' ' -f1)
+    brew tap-new safonas/local --no-git >/dev/null 2>&1 || true
+    tap=$(brew --repository safonas/local)
+    mkdir -p "$tap/Formula"
+    cat >"$tap/Formula/ocid.rb" <<EOF
+    class Ocid < Formula
+      desc "Local-first, peer-to-peer distribution of OCI container images (LOCAL BUILD)"
+      homepage "https://github.com/safonas/ocid"
+      url "file://$tarball"
+      sha256 "$sha"
+      version "$ver-local"
+      license "GPL-3.0-or-later"
+      depends_on "rust" => :build
+      def install
+        system "cargo", "install", *std_cargo_args(path: "crates/ocid")
+        system "cargo", "install", *std_cargo_args(path: "crates/ocictl")
+        system "cargo", "install", *std_cargo_args(path: "crates/ocitop")
+      end
+      test do
+        assert_match "ocid", shell_output("#{bin}/ocid --version")
+      end
+    end
+    EOF
+    brew uninstall --ignore-dependencies ocid >/dev/null 2>&1 || true
+    brew install --formula safonas/local/ocid
+    ocid --version; ocictl --version; ocitop --version
 
 # Remove target volume and ./bin.
 clean:

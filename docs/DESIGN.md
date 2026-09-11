@@ -23,10 +23,11 @@ flowchart LR
     subgraph host["your machine"]
         podman["podman / docker / oras"]
         cli["ocictl"]
+        tui["ocitop (TUI)"]
         prom["Prometheus"]
         subgraph node["ocid (daemon)"]
             reg["OCI v2 registry<br/>127.0.0.1:5050/v2"]
-            ctl["control API<br/>/_ocid/*"]
+            ctl["control API & SSE<br/>/_ocid/*"]
             met["/metrics<br/>OpenMetrics"]
             core["Node<br/>identity · policy · windows · fetch · GC"]
             store["Store<br/>iroh-blobs FsStore + JSON index"]
@@ -41,6 +42,7 @@ flowchart LR
 
     podman -- "HTTP /v2" --> reg
     cli -- "HTTP /_ocid" --> ctl
+    tui -- "HTTP /_ocid & SSE" --> ctl
     cli -. "offline: reads index" .-> store
     prom --> met
     reg --> core
@@ -57,7 +59,7 @@ flowchart LR
 ```
 
 Crates: `ocid-core` (library: identity, config/policy, OCI types, release
-records, index, API DTOs) — `ocid` (daemon) — `ocictl` (CLI).
+records, index, API DTOs, optional client) — `ocid` (daemon) — `ocictl` (CLI) — `ocitop` (TUI dashboard).
 
 ## Identity and naming
 
@@ -314,6 +316,10 @@ the signed record is always fetched and verified via `sync`.
 published/replicated/failed, blobs fetched, announcements, sync requests by
 type, mDNS discoveries, gossip topics, GC runs/removals, gauges for
 neighbors/peers/releases) and iroh's endpoint and gossip metrics (`iroh_*`).
+
+`GET /_ocid/events` serves a Server-Sent Events (SSE) stream of `DaemonEvent`s
+(gossip announcements, releases saved, window prunes, peer connections, and HTTP
+requests) consumed in real time by `ocitop`.
 
 ## Trust boundaries
 

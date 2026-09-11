@@ -17,7 +17,7 @@ just test        # unit tests
 just clippy      # lints (warnings are errors, same as CI)
 just fmt         # rustfmt
 just fmt-check   # fail if sources are not formatted
-just bin         # debug build -> ./bin/{ocid,ocictl}
+just bin         # debug build -> ./bin/{ocid,ocictl,ocitop}
 just run ARGS    # run the ocid daemon in the builder (state in ./.dev/ocid-home)
 just ctl ARGS    # run ocictl in the builder against the same state
 just shell       # interactive shell in the build container

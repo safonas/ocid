@@ -20,14 +20,15 @@ Local-first, peer-to-peer distribution of OCI container images — think
 Design details with diagrams: [docs/DESIGN.md](docs/DESIGN.md).
 Topologies and use cases: [docs/pitch.md](docs/pitch.md).
 
-## Two binaries
+## Binaries
 
 | binary | role |
 |---|---|
 | `ocid` | the daemon: iroh endpoint, gossip, blob store, OCI registry + control API + metrics on one loopback port |
 | `ocictl` | the CLI: talks to the daemon over `http://127.0.0.1:5050/_ocid/*`; edits `policy.toml`; works offline for `ls`, `whoami`, `policy` |
+| `ocitop` | the TUI: interactive dashboard for daemon status, releases, peers, and live SSE event stream |
 
-Both share the library crate `ocid-core` (identity, release records, policy,
+All three share the library crate `ocid-core` (identity, release records, policy,
 on-disk index, API types).
 
 ## Installation
@@ -42,7 +43,7 @@ brew install safonas/tap/ocid
 
 Every [release](https://github.com/safonas/ocid/releases/latest) ships
 `ocid_<version>_<arch>.deb` and `.rpm` packages (plus SLSA Level 3 provenance).
-They install `ocid`/`ocictl` to `/usr/bin` and a systemd unit:
+They install `ocid`, `ocictl`, and `ocitop` to `/usr/bin` and a systemd unit:
 
 ```sh
 sudo dpkg -i ocid_0.2.0_amd64.deb        # Debian/Ubuntu
@@ -76,7 +77,7 @@ include Level 3 [SLSA](https://slsa.dev) cryptographic provenance
 Builds are bit-for-bit reproducible and isolated inside rootless podman:
 
 ```sh
-just bin                      # builds inside podman -> ./bin/ocid, ./bin/ocictl
+just bin                      # builds inside podman -> ./bin/ocid, ./bin/ocictl, ./bin/ocitop
 ```
 
 ## Quick start
@@ -92,6 +93,7 @@ Publish (another shell):
 ```sh
 podman push --tls-verify=false docker.io/library/alpine:latest 127.0.0.1:5050/alpine:3
 ./bin/ocictl ls
+./bin/ocitop                   # live TUI dashboard for daemon status, peers & events
 ```
 
 Consume on a second node (bootstrap with the first node's ticket from

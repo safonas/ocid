@@ -31,17 +31,19 @@ COPY Cargo.toml Cargo.lock* ./
 COPY crates/ocid-core/Cargo.toml crates/ocid-core/Cargo.toml
 COPY crates/ocid/Cargo.toml      crates/ocid/Cargo.toml
 COPY crates/ocictl/Cargo.toml    crates/ocictl/Cargo.toml
-RUN mkdir -p crates/ocid-core/src crates/ocid/src crates/ocictl/src \
+COPY crates/ocitop/Cargo.toml    crates/ocitop/Cargo.toml
+RUN mkdir -p crates/ocid-core/src crates/ocid/src crates/ocictl/src crates/ocitop/src \
  && echo '' > crates/ocid-core/src/lib.rs \
  && echo 'fn main() {}' > crates/ocid/src/main.rs \
  && echo 'fn main() {}' > crates/ocictl/src/main.rs \
+ && echo 'fn main() {}' > crates/ocitop/src/main.rs \
  && (cargo build --release --locked 2>/dev/null || cargo build --release) \
  && rm -rf crates/*/src
 
 COPY crates ./crates
 # Touch sources with deterministic timestamp so cargo notices real files replaced stubs.
 RUN find crates -name '*.rs' -exec touch -d @${SOURCE_DATE_EPOCH} {} + && cargo build --release \
- && strip target/release/ocid target/release/ocictl
+ && strip target/release/ocid target/release/ocictl target/release/ocitop
 
 # ---------------------------------------------------------------------------
 # runtime
@@ -55,6 +57,7 @@ RUN apt-get update \
 
 COPY --from=builder /src/target/release/ocid   /usr/local/bin/ocid
 COPY --from=builder /src/target/release/ocictl /usr/local/bin/ocictl
+COPY --from=builder /src/target/release/ocitop /usr/local/bin/ocitop
 
 USER ocid
 WORKDIR /data

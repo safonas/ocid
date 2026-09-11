@@ -13,15 +13,18 @@ use axum::{
     extract::{DefaultBodyLimit, Path, Query, Request, State},
     http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
-    response::{IntoResponse, Response},
+    response::{
+        sse::{Event as SseEvent, KeepAlive, Sse},
+        IntoResponse, Response,
+    },
     routing::{get, post},
     Json, Router,
 };
 use n0_future::StreamExt;
 use ocid_core::{
     api::{
-        AddPeerReq, AddPeerResp, AnnounceReq, AnnounceResp, ErrorResp, GcReq, OkResp, RefReq,
-        ReleaseInfo, RmReq, RmResp, SyncReq, SyncResp,
+        AddPeerReq, AddPeerResp, AnnounceReq, AnnounceResp, DaemonEvent, ErrorResp, GcReq, OkResp,
+        RefReq, ReleaseInfo, RmReq, RmResp, SyncReq, SyncResp,
     },
     identity::PublisherId,
     oci::{self, Digest, ImageRef, Manifest},
@@ -32,6 +35,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::Mutex,
 };
+use tokio_stream::wrappers::BroadcastStream;
 use tokio_util::io::ReaderStream;
 
 use crate::{
@@ -71,6 +75,7 @@ pub async fn serve(node: Arc<Node>, listener: tokio::net::TcpListener) {
         .route("/_ocid/policy/reload", post(ctl_reload))
         .route("/_ocid/gc", post(ctl_gc))
         .route("/_ocid/rm", post(ctl_rm))
+        .route("/_ocid/events", get(ctl_events))
         .route("/metrics", get(metrics_get))
         .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(app.clone(), count_requests))
@@ -84,16 +89,29 @@ pub async fn serve(node: Arc<Node>, listener: tokio::net::TcpListener) {
 async fn count_requests(State(app): State<App>, req: Request, next: Next) -> Response {
     let method = req.method().to_string();
     let route = metrics::route_family(req.uri().path());
+    // Only pay for the path copy when someone is listening on /_ocid/events,
+    // and never echo the event stream request itself.
+    let path = (app.node.events.receiver_count() > 0
+        && !req.uri().path().starts_with("/_ocid/events"))
+    .then(|| req.uri().path().to_string());
     let resp = next.run(req).await;
+    let status = resp.status().as_u16();
     app.node
         .metrics
         .http_requests
         .get_or_create(&RequestLabels {
-            method,
+            method: method.clone(),
             route,
-            status: resp.status().as_u16(),
+            status,
         })
         .inc();
+    if let Some(path) = path {
+        app.node.emit(DaemonEvent::HttpRequest {
+            method,
+            path,
+            status,
+        });
+    }
     resp
 }
 
@@ -1045,4 +1063,18 @@ async fn ctl_rm(State(app): State<App>, Json(req): Json<RmReq>) -> Response {
 
 async fn ctl_reload(State(app): State<App>) -> Response {
     ctl_result(app.node.reload_policy().await.map(|_| OkResp { ok: true }))
+}
+
+/// `GET /_ocid/events` — live daemon events as Server-Sent Events, one JSON
+/// `DaemonEvent` per `data:` line. Consumers that lag behind the broadcast
+/// buffer simply miss events; there is no backpressure onto the daemon.
+async fn ctl_events(
+    State(app): State<App>,
+) -> Sse<impl n0_future::Stream<Item = Result<SseEvent, std::convert::Infallible>>> {
+    let stream = BroadcastStream::new(app.node.events.subscribe()).filter_map(|item| {
+        item.ok()
+            .and_then(|ev| serde_json::to_string(&ev).ok())
+            .map(|json| Ok(SseEvent::default().data(json)))
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }

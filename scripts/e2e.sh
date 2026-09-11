@@ -141,6 +141,10 @@ assert_contains "did:key form" "$A_DID" "did:key:z6Mk"
 # ---------------------------------------------------------------------------
 
 log "publish alpine:1 on A"
+# Listen on the SSE event stream while publishing (ocitop's data source).
+curl -sN --max-time 60 "http://$REG_A/_ocid/events" >"$WORK/events.log" &
+EVENTS_PID=$!
+sleep 0.5
 push_a "$SRC_IMAGE" alpine:1
 assert_contains "A lists alpine:1" "$(ctl_a ls)" "alpine"
 REL="$HOME_A/index/releases/$A/alpine/1.json"
@@ -185,6 +189,17 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "http://$REG_A/v2/busybo
 assert_eq "DELETE manifest by tag -> 202" 202 "$code"
 assert_not_contains "busybox gone from A" "$(ctl_a ls)" "busybox"
 wait_for "busybox layer reclaimed by blob GC" 30 bash -c "[ \$(find '$HOME_A/blobs' -type f | wc -l) -lt $files_before ]"
+
+log "event stream (SSE)"
+kill "$EVENTS_PID" 2>/dev/null || true
+wait "$EVENTS_PID" 2>/dev/null || true
+ev=$(cat "$WORK/events.log")
+assert_contains "SSE frames use data: lines" "$ev" "data: {"
+assert_contains "release_saved event for the push" "$ev" '"type":"release_saved"'
+assert_contains "outbound gossip event" "$ev" '"type":"gossip"'
+assert_contains "http_request events while a listener is attached" "$ev" '"type":"http_request"'
+assert_not_contains "event stream does not echo itself" "$ev" '/_ocid/events'
+assert_contains "SSE content-type" "$(curl -s -D - -o /dev/null --max-time 1 "http://$REG_A/_ocid/events" || true)" "text/event-stream"
 
 log "metrics"
 m=$(curl -s "http://$REG_A/metrics")

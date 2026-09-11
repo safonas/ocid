@@ -35,6 +35,11 @@ contents:
     type: file
     file_info:
       mode: 0755
+  - src: "@@STAGE@@/ocitop"
+    dst: /usr/bin/ocitop
+    type: file
+    file_info:
+      mode: 0755
   - src: packaging/systemd/ocid.service
     dst: /usr/lib/systemd/system/ocid.service
     type: file

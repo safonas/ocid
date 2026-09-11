@@ -1,7 +1,5 @@
 //! `ocictl` — control CLI for the ocid daemon.
 
-mod client;
-
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
@@ -12,6 +10,7 @@ use ocid_core::{
         AddPeerResp, AnnounceResp, GcReport, OkResp, PeerInfo, ReleaseInfo, RmResp, Status,
         SyncResp,
     },
+    client::Client,
     config::{Config, Mode, Policy},
     identity::{did_key, parse_publisher, Identity},
     index::Index,
@@ -19,8 +18,6 @@ use ocid_core::{
     paths::Paths,
     release::ReleaseSummary,
 };
-
-use crate::client::Client;
 
 #[derive(Debug, Parser)]
 #[command(

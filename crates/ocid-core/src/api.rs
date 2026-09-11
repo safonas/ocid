@@ -120,3 +120,38 @@ pub struct OkResp {
 pub struct ErrorResp {
     pub error: String,
 }
+
+/// Real-time event emitted by the daemon over the `GET /_ocid/events` SSE stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DaemonEvent {
+    /// A release announcement was received or broadcast on gossip.
+    Gossip {
+        publisher: PublisherId,
+        name: String,
+        tag: String,
+        outbound: bool,
+    },
+    /// A release was pruned or kept by window enforcement.
+    Pruned {
+        publisher: PublisherId,
+        name: String,
+        tag: String,
+        reason: String,
+    },
+    /// A release was successfully replicated or published.
+    ReleaseSaved {
+        publisher: PublisherId,
+        name: String,
+        tag: String,
+        blobs: usize,
+    },
+    /// A peer connected or disconnected.
+    PeerChange { id: EndpointId, connected: bool },
+    /// An HTTP request was processed by the registry or control API.
+    HttpRequest {
+        method: String,
+        path: String,
+        status: u16,
+    },
+}

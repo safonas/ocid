@@ -1,6 +1,6 @@
 [package]
-name = "ocictl"
-description = "ocid control CLI"
+name = "ocitop"
+description = "Terminal UI monitor and control dashboard for ocid"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,17 +8,17 @@ repository.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "ocictl"
+name = "ocitop"
 path = "src/main.rs"
 
 [dependencies]
 ocid-core = { workspace = true, features = ["client"] }
 
 tokio = { workspace = true }
-reqwest = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
-comfy-table = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
-toml = { workspace = true }
+chrono = { workspace = true }
+
+ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+crossterm = "0.28"

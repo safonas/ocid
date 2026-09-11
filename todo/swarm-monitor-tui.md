@@ -1,12 +1,16 @@
-# Live Swarm Monitor TUI (`ocictl top`)
+# Live Swarm Monitor TUI (`ocitop`)
 
-## Context
-Operators currently monitor daemon activity through structured logs or Prometheus metrics (`GET /metrics`). There is no interactive real-time visualization of swarm health and transfers.
+## Status
+Implemented in `crates/ocitop` as a dedicated TUI binary (`ocitop`).
+Uses Ratatui and crossterm, polling the daemon control API and streaming real-time events over SSE (`/_ocid/events`).
 
-## Proposal
-- Implement an interactive terminal UI command: `ocictl top` (or `ocictl monitor`).
-- Features:
-  - Live list of connected peers, ping latency, and QUIC connection quality.
-  - Real-time active blob transfers with progress bars, speeds, and provider endpoints.
-  - Live stream of gossip announcements across joined publisher topics.
-  - Cache size, active pins, and retention window status.
+## Features Implemented
+- Status header with node DID, active peers, releases count, policy rules, and uptime.
+- Images tab with table of local releases, retention status, verification check, and inspector detail pane.
+- Peers tab with endpoint IDs, DIDs, neighbor status, and last-seen timing.
+- Live Events tab & ticker streaming SSE events (`DaemonEvent`: gossip, release saved, prune, peer change, HTTP requests).
+- Interactive policy and lifecycle actions: seed, follow, pin, sync, GC, and delete with confirmation dialogs.
+
+## Remaining Enhancements
+- Real-time active blob transfers with progress bars and speeds.
+- Ping latency and QUIC connection quality metrics per peer.

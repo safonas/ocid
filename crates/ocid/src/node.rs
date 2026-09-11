@@ -23,7 +23,7 @@ use iroh_gossip::{
 use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use iroh_tickets::endpoint::EndpointTicket;
 use ocid_core::{
-    api::{GcReport, GcReq, PeerInfo, RmResp, Status},
+    api::{DaemonEvent, GcReport, GcReq, PeerInfo, RmResp, Status},
     config::{self, Config, Peers, Policy},
     hash::Blake3,
     identity::{did_key, Identity, PublisherId},
@@ -69,6 +69,7 @@ pub struct Node {
     /// Fetches hold this for reading, GC for writing: a sweep must never run
     /// while a download is between "complete" and "pinned".
     gc_lock: RwLock<()>,
+    pub events: tokio::sync::broadcast::Sender<DaemonEvent>,
     started: Instant,
 }
 
@@ -207,6 +208,8 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
         )
     });
 
+    let (events, _) = tokio::sync::broadcast::channel(512);
+
     let node = Arc::new(Node {
         paths: paths.clone(),
         identity,
@@ -226,6 +229,7 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
         last_seen: RwLock::new(BTreeMap::new()),
         inflight: Mutex::new(HashSet::new()),
         gc_lock: RwLock::new(()),
+        events,
         started: Instant::now(),
     });
 
@@ -333,6 +337,10 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 impl Node {
+    pub fn emit(&self, event: DaemonEvent) {
+        let _ = self.events.send(event);
+    }
+
     pub fn id(&self) -> PublisherId {
         self.identity.id()
     }
@@ -540,6 +548,10 @@ impl Node {
         let new = self.neighbors.write().await.insert(id);
         self.note_peer_seen(id).await;
         if new {
+            self.emit(DaemonEvent::PeerChange {
+                id,
+                connected: true,
+            });
             // A swarm neighbor may be on publisher topics we could not
             // bootstrap yet (e.g. the publisher itself just came online).
             for sub in self.topics.lock().await.values() {
@@ -549,7 +561,12 @@ impl Node {
     }
 
     pub async fn neighbor_down(&self, id: EndpointId) {
-        self.neighbors.write().await.remove(&id);
+        if self.neighbors.write().await.remove(&id) {
+            self.emit(DaemonEvent::PeerChange {
+                id,
+                connected: false,
+            });
+        }
     }
 
     /// Peers worth asking about `publisher`'s images.
@@ -683,6 +700,12 @@ impl Node {
     pub async fn on_announcement(&self, s: ReleaseSummary, from: EndpointId) -> Result<()> {
         self.metrics.announcements_received.inc();
         self.note_peer_seen(from).await;
+        self.emit(DaemonEvent::Gossip {
+            publisher: s.publisher,
+            name: s.name.clone(),
+            tag: s.tag.clone(),
+            outbound: false,
+        });
         let policy = self.policy().await;
         let wanted =
             self.select_wanted(&policy, &s.publisher, &s.name, std::slice::from_ref(&s))?;
@@ -760,6 +783,12 @@ impl Node {
                     r.reference(),
                     window.describe()
                 );
+                self.emit(DaemonEvent::Pruned {
+                    publisher: *publisher,
+                    name: name.to_string(),
+                    tag: r.payload.tag.clone(),
+                    reason: format!("outside window {}", window.describe()),
+                });
                 removed += 1;
             }
         }
@@ -850,6 +879,12 @@ impl Node {
             fetched += 1;
         }
         let stored = self.store.put_release(release)?;
+        self.emit(DaemonEvent::ReleaseSaved {
+            publisher: *release.publisher(),
+            name: release.name().to_string(),
+            tag: release.payload.tag.clone(),
+            blobs: total,
+        });
         tracing::info!(
             "replicated {} ({fetched}/{total} blobs fetched{})",
             release.reference(),
@@ -923,6 +958,12 @@ impl Node {
         }
         self.store.put_release(release)?;
         self.metrics.releases_published.inc();
+        self.emit(DaemonEvent::ReleaseSaved {
+            publisher: *release.publisher(),
+            name: release.name().to_string(),
+            tag: release.payload.tag.clone(),
+            blobs: release.payload.blobs.len(),
+        });
         self.announce(release).await
     }
 
@@ -943,6 +984,12 @@ impl Node {
             .await
             .map_err(|e| anyhow!("gossip broadcast: {e}"))?;
         self.metrics.announcements_sent.inc();
+        self.emit(DaemonEvent::Gossip {
+            publisher,
+            name: release.name().to_string(),
+            tag: release.payload.tag.clone(),
+            outbound: true,
+        });
         tracing::info!("announced {}", release.reference());
         Ok(())
     }

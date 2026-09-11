@@ -60,15 +60,17 @@ jobs:
           # Standalone binaries
           cp target/x86_64-unknown-linux-gnu/release/ocid dist/ocid-linux-amd64
           cp target/x86_64-unknown-linux-gnu/release/ocictl dist/ocictl-linux-amd64
+          cp target/x86_64-unknown-linux-gnu/release/ocitop dist/ocitop-linux-amd64
           cp target/aarch64-unknown-linux-gnu/release/ocid dist/ocid-linux-arm64
           cp target/aarch64-unknown-linux-gnu/release/ocictl dist/ocictl-linux-arm64
+          cp target/aarch64-unknown-linux-gnu/release/ocitop dist/ocitop-linux-arm64
 
           # Deterministic tarballs
           GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
-            -czf dist/ocid-linux-amd64.tar.gz -C target/x86_64-unknown-linux-gnu/release ocid ocictl
+            -czf dist/ocid-linux-amd64.tar.gz -C target/x86_64-unknown-linux-gnu/release ocid ocictl ocitop
 
           GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
-            -czf dist/ocid-linux-arm64.tar.gz -C target/aarch64-unknown-linux-gnu/release ocid ocictl
+            -czf dist/ocid-linux-arm64.tar.gz -C target/aarch64-unknown-linux-gnu/release ocid ocictl ocitop
 
       - name: Build .deb and .rpm packages
         env:
@@ -86,7 +88,7 @@ jobs:
             stage="dist/stage"
             cfg="dist/nfpm-${nfpm_arch}.yaml"
             mkdir -p "$stage"
-            cp "target/${target}/release/ocid" "target/${target}/release/ocictl" "$stage/"
+            cp "target/${target}/release/ocid" "target/${target}/release/ocictl" "target/${target}/release/ocitop" "$stage/"
             sed -e "s|@@VERSION@@|${PKG_VERSION}|g" -e "s|@@ARCH@@|${nfpm_arch}|g" -e "s|@@STAGE@@|${stage}|g" \
               packaging/nfpm.yaml > "$cfg"
             /tmp/nfpm package --config "$cfg" --packager deb --target dist/
@@ -109,7 +111,7 @@ jobs:
           set -euo pipefail
 
           cd dist
-          files=$(ls ocid-linux-* ocictl-linux-* *.deb *.rpm)
+          files=$(ls ocid-linux-* ocictl-linux-* ocitop-linux-* *.deb *.rpm)
           # Generate the subjects (base64 encoded).
           echo "digests=$(sha256sum $files | base64 -w0)" >> "${GITHUB_OUTPUT}"
 
