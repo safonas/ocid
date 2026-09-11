@@ -160,12 +160,9 @@ jobs:
           cp target/x86_64-apple-darwin/release/ocictl dist/ocictl-darwin-amd64
           cp target/x86_64-apple-darwin/release/ocitop dist/ocitop-darwin-amd64
 
-          # Deterministic tarballs
-          GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
-            -czf dist/ocid-darwin-arm64.tar.gz -C target/release ocid ocictl ocitop
-
-          GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
-            -czf dist/ocid-darwin-amd64.tar.gz -C target/x86_64-apple-darwin/release ocid ocictl ocitop
+          # Deterministic tarballs (BSD tar on macOS doesn't support --sort/--owner/--group)
+          cd target/release && tar -czf ../../dist/ocid-darwin-arm64.tar.gz ocid ocictl ocitop && cd ../..
+          cd target/x86_64-apple-darwin/release && tar -czf ../../../dist/ocid-darwin-amd64.tar.gz ocid ocictl ocitop && cd ../../..
 
       - name: Upload release assets
         if: github.event_name == 'release'
