@@ -34,6 +34,16 @@ air-gapped environments, self-hosting, and supply-chain security.
 > two-node workflow below and
 > [open an issue](https://github.com/safonas/ocid/issues) with what broke.
 
+## Docs
+
+- 📖 **[Why ocid — topologies and use cases](docs/pitch.md)** — start here
+  for the problem, edge / air-gapped / CI / self-hosted scenarios, and how
+  ocid compares to a centralized registry.
+- 🏗️ **[Design](docs/DESIGN.md)** — architecture, identity and signed
+  releases, gossip topics, replication and GC, with diagrams and sequences.
+- 🛠️ **[Development](docs/development.md)** — contributor guide: `just`
+  recipes, e2e tests, reproducible container builds, packaging, git hooks.
+
 ## Binaries
 
 | binary | role |
@@ -134,9 +144,9 @@ Three things worth trying once the two-node pull works:
 3. **Policy:** `ocictl follow` / `seed` / `pin` with `latest`, `last:N`,
    `full` to bound what each node keeps.
 
-Architecture diagrams and sequences: [docs/DESIGN.md](docs/DESIGN.md).
-Topologies and use cases: [docs/pitch.md](docs/pitch.md).
-Full contributor guide: [docs/development.md](docs/development.md).
+See [Docs](#docs) above: [pitch](docs/pitch.md) for topologies and use
+cases, [DESIGN](docs/DESIGN.md) for architecture diagrams and sequences,
+[development](docs/development.md) for the contributor guide.
 
 ## Naming (hybrid scheme)
 
@@ -240,9 +250,9 @@ uploads/                        in-flight registry uploads
 
 ## Development
 
-See [docs/development.md](docs/development.md) for the full contributor guide
-(`just` recipes, e2e tests, reproducible container builds, `.deb`/`.rpm`
-packaging, git hooks).
+Full contributor guide: [docs/development.md](docs/development.md) —
+`just` recipes, e2e tests, reproducible container builds, `.deb`/`.rpm`
+packaging, Homebrew tap and releases, git hooks.
 
 ## Status
 
