@@ -47,6 +47,15 @@ on-disk index, API types).
 
 ## Installation
 
+### Source
+
+GitHub: <https://github.com/safonas/ocid> ·
+Radicle: `rad://z3mm1Eoyjb1FKFW8AnMGz3rc4FUnZ`
+
+```sh
+rad clone rad://z3mm1Eoyjb1FKFW8AnMGz3rc4FUnZ
+```
+
 ### Homebrew (macOS & Linux, x86_64 & arm64)
 
 ```sh
