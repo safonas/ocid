@@ -81,7 +81,8 @@ just publish-release <version>  # or scripts/release.sh <version>
 This script:
 1. Verifies the working tree is clean and runs `just ci` (all lints and tests).
 2. Bumps `Cargo.toml` and `Cargo.lock`.
-3. Commits, tags (`v<version>`), and pushes to GitHub.
+3. Commits, tags (`v<version>`), and pushes to GitHub and Radicle
+   (the Radicle push warns instead of failing if the node is offline).
 4. Creates the GitHub release (triggering SLSA package and provenance builds).
 5. Updates `Formula/ocid.rb` in `safonas/homebrew-tap`, audits with `brew audit`, and pushes the tap.
 

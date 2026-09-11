@@ -12,7 +12,9 @@
 #   1. Validates working tree is clean and on main branch.
 #   2. Runs full CI validation (fmt-check, clippy, unit tests, e2e tests).
 #   3. Updates version in Cargo.toml and synchronizes Cargo.lock.
-#   4. Commits version bump, creates annotated git tag, and pushes to GitHub.
+#   4. Commits version bump, creates annotated git tag, and pushes to GitHub
+#      and Radicle (rad push warns instead of failing: the node may be offline
+#      and syncs later via `rad node start`).
 #   5. Creates GitHub Release (triggers SLSA package build workflow).
 #   6. Updates safonas/homebrew-tap formula (url, sha256), validates with brew audit,
 #      and pushes tap update so Homebrew drift check passes immediately.
@@ -81,6 +83,15 @@ git commit -m "chore(release): bump version to $tag"
 git push github main
 git tag -a "$tag" -m "Release $tag"
 git push github "$tag"
+
+# Mirror branch and tag to Radicle as well. Warn instead of failing: the
+# local node may be offline (it syncs on `rad node start`), and that must
+# not block a GitHub release.
+if git remote get-url rad >/dev/null 2>&1; then
+    git push rad main "$tag" || echo "warning: push to rad remote failed" >&2
+else
+    echo "warning: no rad remote configured, skipping Radicle mirror" >&2
+fi
 
 # 5. Update and push Homebrew tap (before release event fires drift check)
 echo "==> [5/6] Updating Homebrew tap..."
