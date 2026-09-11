@@ -9,7 +9,8 @@
 # Base images are pinned by digest for reproducible builds; the tag is kept
 # for readability. Override with --build-arg if needed.
 ARG BUILDER_IMAGE=docker.io/library/rust:1.98.1-slim-bookworm@sha256:ebd900bae66fd508b466cef82d64a83a5fb34682e4c8b2797a42908bddc95a57
-ARG RUNTIME_IMAGE=docker.io/library/debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+# Wolfi rolling base (re-pin regularly for fresh security fixes).
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:6a8dca4c2153cfc11d559cfa6172c187b896423d833f3d48a4c1c44ab55596d7
 ARG SOURCE_DATE_EPOCH=1726012800
 
 # ---------------------------------------------------------------------------
@@ -41,8 +42,9 @@ RUN mkdir -p crates/ocid-core/src crates/ocid/src crates/ocictl/src crates/ocito
  && rm -rf crates/*/src
 
 COPY crates ./crates
-# Touch sources with deterministic timestamp so cargo notices real files replaced stubs.
-RUN find crates -name '*.rs' -exec touch -d @${SOURCE_DATE_EPOCH} {} + && cargo build --release \
+# Touch sources so cargo sees them as newer than the stub-build artifacts and
+# actually rebuilds (a fixed past timestamp would look older and ship stubs).
+RUN find crates -name '*.rs' -exec touch {} + && cargo build --release \
  && strip target/release/ocid target/release/ocictl target/release/ocitop
 
 # ---------------------------------------------------------------------------
@@ -50,10 +52,9 @@ RUN find crates -name '*.rs' -exec touch -d @${SOURCE_DATE_EPOCH} {} + && cargo 
 # ---------------------------------------------------------------------------
 FROM ${RUNTIME_IMAGE} AS runtime
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
- && useradd --system --uid 1000 --home /data --create-home ocid
+RUN apk add --no-cache ca-certificates \
+ && addgroup -S -g 1000 ocid \
+ && adduser -S -D -u 1000 -G ocid -h /data ocid
 
 COPY --from=builder /src/target/release/ocid   /usr/local/bin/ocid
 COPY --from=builder /src/target/release/ocictl /usr/local/bin/ocictl

@@ -55,8 +55,9 @@ podman exec ocid ocictl status
 
 The `Containerfile` is a multi-stage build: the pinned Rust builder compiles
 release binaries with `SOURCE_DATE_EPOCH` and path remapping for bit-for-bit
-reproducible output, then the pinned `debian:bookworm-slim` runtime stage
-copies in just the two binaries and runs as the `ocid` user.
+reproducible output, then the pinned Wolfi (`wolfi-base`) runtime stage
+copies in just the three binaries and runs as the `ocid` user. Wolfi is a
+rolling base, so re-pin `RUNTIME_IMAGE` regularly to pick up fresh fixes.
 
 ## Native packages
 
