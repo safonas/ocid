@@ -24,7 +24,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 podman       := env("PODMAN", "podman")
-rust_image   := env("RUST_IMAGE", "docker.io/library/rust:1-slim-bookworm")
+rust_image   := env("RUST_IMAGE", "docker.io/library/rust:1.98.1-slim-bookworm")
 image        := env("IMAGE", "localhost/ocid:dev")
 project      := "ocid"
 vol_registry := project + "-cargo-registry"

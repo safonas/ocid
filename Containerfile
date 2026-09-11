@@ -6,13 +6,17 @@
 #   podman run -d --name ocid -p 5050:5050 -v ocid-data:/data ocid
 #   podman exec ocid ocictl status
 #
-ARG RUST_VERSION=1
+ARG RUST_VERSION=1.98.1
 ARG DEBIAN_RELEASE=bookworm
+ARG SOURCE_DATE_EPOCH=1726012800
 
 # ---------------------------------------------------------------------------
 # builder
 # ---------------------------------------------------------------------------
 FROM docker.io/library/rust:${RUST_VERSION}-slim-${DEBIAN_RELEASE} AS builder
+
+ENV SOURCE_DATE_EPOCH=1726012800
+ENV RUSTFLAGS="--remap-path-prefix=/src=/build"
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
@@ -33,8 +37,8 @@ RUN mkdir -p crates/ocid-core/src crates/ocid/src crates/ocictl/src \
  && rm -rf crates/*/src
 
 COPY crates ./crates
-# Touch sources so cargo notices the real files replaced the stubs.
-RUN find crates -name '*.rs' -exec touch {} + && cargo build --release \
+# Touch sources with deterministic timestamp so cargo notices real files replaced stubs.
+RUN find crates -name '*.rs' -exec touch -d @${SOURCE_DATE_EPOCH} {} + && cargo build --release \
  && strip target/release/ocid target/release/ocictl
 
 # ---------------------------------------------------------------------------
