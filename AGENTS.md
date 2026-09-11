@@ -34,6 +34,8 @@ execute inside a container with cached volumes and proper `:Z` SELinux bind moun
 - `just e2e`: build binaries and run full end-to-end test suite (`scripts/e2e.sh`)
 - `just ci`: run `fmt-check` + `clippy` + `test` + `e2e` (all CI checks)
 - `just hooks`: install git pre-commit and pre-push hooks
+- `just brew`: audit the Homebrew tap formula syntax
+- `just publish-release <version>`: automate CI validation, git tag, GitHub release, and Homebrew tap publication
 
 ### Git hooks
 

@@ -17,8 +17,9 @@
 #   just hooks        install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 #   just image        build the runtime container image (Containerfile)
 #   just pkg          build .deb + .rpm for the host arch into ./dist (via nfpm)
-#   just brew         verify the Homebrew tap formula (checkout in .dev, install from local file)
+#   just brew         verify the Homebrew tap formula via brew audit
 #   just brew-local   brew-install the current working tree (no tag needed) for local testing
+#   just publish-release VER cut a release (CI checks, tag, GH release, tap update)
 #   just clean        remove target volume + ./bin + ./dist
 #
 # All dev recipes bind-mount the source tree (:Z for SELinux) and keep the
@@ -155,13 +156,9 @@ pkg: release
     rm -rf "$stage" "$cfg"
     ls dist/
 
-# Verify the Homebrew tap formula end-to-end. Homebrew only installs formulae
-# that live in a tap, so this works inside the tapped checkout of
-# safonas/homebrew-tap (`brew --repository safonas/tap`, tapped on demand),
-# reset to origin/main every run: bump url/sha256 to the current Cargo.toml
-# version (the v<ver> tag must already be on GitHub), reinstall from the tap
-# and smoke-test the binaries. Pushing the tap is manual:
-#   git -C "$(brew --repository safonas/tap)" commit -am "ocid: bump to vX.Y.Z" && git -C "$(brew --repository safonas/tap)" push
+# Verify the Homebrew tap formula syntax and structure via brew audit.
+# Syncs safonas/tap, updates url/sha256/crates to match Cargo.toml,
+# and audits the formula. (Local compile/install is testable via just brew-local).
 brew:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -182,9 +179,8 @@ brew:
         sed -i -e '/crates\/ocictl/a\    system "cargo", "install", *std_cargo_args(path: "crates/ocitop")' "$tap/Formula/ocid.rb"
     fi
     git -C "$tap" --no-pager diff -- Formula/ocid.rb || true
-    brew uninstall --ignore-dependencies ocid >/dev/null 2>&1 || true
-    brew install --formula safonas/tap/ocid
-    ocid --version; ocictl --version; ocitop --version
+    brew audit --formula safonas/tap/ocid
+    echo "-> safonas/tap/ocid formula valid"
 
 # Install the *working tree* through Homebrew for local testing (no tag or
 # commit needed). Homebrew 6 refuses loose formula files, so this keeps a
@@ -228,6 +224,14 @@ brew-local:
     brew uninstall --ignore-dependencies ocid >/dev/null 2>&1 || true
     brew install --formula safonas/local/ocid
     ocid --version; ocictl --version; ocitop --version
+
+# Cut a new release: validate CI, bump version, tag, create GitHub release, and update Homebrew tap.
+publish-release VERSION:
+    ./scripts/release.sh {{VERSION}}
+
+# Alias for publish-release.
+publish VERSION:
+    ./scripts/release.sh {{VERSION}}
 
 # Remove target volume and ./bin.
 clean:
