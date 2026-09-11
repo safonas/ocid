@@ -17,7 +17,7 @@ on:
     types: [created]
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -122,13 +122,62 @@ jobs:
         run: |
           gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
 
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Build artifacts
+        run: |
+          set -euo pipefail
+
+          export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
+          export RUSTFLAGS="--remap-path-prefix=${GITHUB_WORKSPACE}=/build"
+
+          # Build native (arm64 on Apple Silicon runners)
+          cargo build --release --locked
+
+          # Cross-compile for Intel
+          cargo build --release --locked --target x86_64-apple-darwin
+
+          mkdir -p dist
+
+          # Standalone binaries (arm64 = native, amd64 = cross)
+          cp target/release/ocid dist/ocid-darwin-arm64
+          cp target/release/ocictl dist/ocictl-darwin-arm64
+          cp target/release/ocitop dist/ocitop-darwin-arm64
+          cp target/x86_64-apple-darwin/release/ocid dist/ocid-darwin-amd64
+          cp target/x86_64-apple-darwin/release/ocictl dist/ocictl-darwin-amd64
+          cp target/x86_64-apple-darwin/release/ocitop dist/ocitop-darwin-amd64
+
+          # Deterministic tarballs
+          GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+            -czf dist/ocid-darwin-arm64.tar.gz -C target/release ocid ocictl ocitop
+
+          GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+            -czf dist/ocid-darwin-amd64.tar.gz -C target/x86_64-apple-darwin/release ocid ocictl ocitop
+
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
+
   provenance:
-    needs: [build]
+    needs: [build-linux]
     permissions:
       actions: read   # To read the workflow path.
       id-token: write # To sign the provenance.
       contents: write # To add assets to a release.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
-      base64-subjects: "${{ needs.build.outputs.digests }}"
+      base64-subjects: "${{ needs.build-linux.outputs.digests }}"
       upload-assets: true # Optional: Upload to a new release
