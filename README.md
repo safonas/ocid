@@ -1,24 +1,38 @@
 # ocid
 
-Local-first, peer-to-peer distribution of OCI container images — think
-[Radicle](https://radicle.xyz), but for `podman push`/`podman pull`.
+`ocid` is a local-first, peer-to-peer alternative to centralized OCI
+registries, cryptographically verified, serverless, and designed for edge,
+offline, and bandwidth-constrained environments.
 
-* **No registry server.** Every node runs a tiny OCI registry on
-  `localhost:5050` that podman/docker/crane/oras talk to. Behind it, images
-  are stored content-addressed and exchanged directly between peers over
-  [iroh](https://iroh.computer) (QUIC, hole-punching, optional relays, mDNS on
-  the LAN).
-* **Identity = keypair.** Your Ed25519 key is both your iroh endpoint id and
-  your publisher id. Every push produces a *signed release record* binding
-  `name:tag` to a manifest digest. Peers verify signatures, BLAKE3 streams
-  and sha256 digests — providers are never trusted.
+Centralized registries work well until you are offline, paying large egress
+bills, deploying at the edge, or trying to reduce infrastructure trust.
+`ocid` exposes a normal local OCI registry to `podman`/`docker`/`crane`/`oras`
+on `127.0.0.1:5050`, while peers exchange signed, content-addressed releases
+directly over [iroh](https://iroh.computer) (QUIC, hole-punching, optional
+relays, mDNS on the LAN).
+
+* **No registry server to run.** Every node serves its own loopback registry.
+  Images are stored content-addressed and replicate peer-to-peer — ideal when
+  registry access is unreliable, expensive, or unwanted.
+* **Verified without trusting the provider.** Your Ed25519 key is both your
+  iroh endpoint id and your publisher id. Every push produces a *signed
+  release record* binding `name:tag` to a manifest digest. Peers verify
+  signatures, BLAKE3 streams and sha256 digests before accepting anything.
 * **Replication by policy, not by accident.** `follow` a publisher, `seed` an
   image, `pin` a release. Each rule says how much history to keep
   (`latest`, `last:N`, `full`); anything outside the window is pruned,
   anything you pulled ad hoc is cache that GC reclaims after a grace period.
 
-Design details with diagrams: [docs/DESIGN.md](docs/DESIGN.md).
-Topologies and use cases: [docs/pitch.md](docs/pitch.md).
+The design borrows from [Radicle](https://radicle.xyz) — keys are identities,
+signed records carry trust — applied to `podman push`/`podman pull`.
+
+Built for engineers working with containers, CI/CD, edge deployments,
+air-gapped environments, self-hosting, and supply-chain security.
+
+> Early prototype, tested end-to-end (`just e2e`). If you work on edge,
+> air-gapped, self-hosted, or supply-chain-secure deployments, try the
+> two-node workflow below and
+> [open an issue](https://github.com/safonas/ocid/issues) with what broke.
 
 ## Binaries
 
@@ -81,7 +95,7 @@ Builds are bit-for-bit reproducible and isolated inside rootless podman:
 just bin                      # builds inside podman -> ./bin/ocid, ./bin/ocictl, ./bin/ocitop
 ```
 
-## Quick start
+## Try it in five minutes (two-node demo)
 
 Run the daemon:
 
@@ -108,6 +122,21 @@ podman pull --tls-verify=false 127.0.0.1:5051/<publisher-hex>/alpine:3
 
 Pulling an image nobody told you about also works: the registry asks its
 peers on demand and keeps the result as cache.
+
+Three things worth trying once the two-node pull works:
+
+1. **Offline / air-gapped:** restart both daemons with `--no-relay` on the
+   same LAN and repeat the pull — discovery uses mDNS, no central
+   infrastructure.
+2. **Verification:** run `ocictl ls` and pull by digest; every blob is
+   checked against the signed release record (BLAKE3 while streaming,
+   sha256 afterwards).
+3. **Policy:** `ocictl follow` / `seed` / `pin` with `latest`, `last:N`,
+   `full` to bound what each node keeps.
+
+Architecture diagrams and sequences: [docs/DESIGN.md](docs/DESIGN.md).
+Topologies and use cases: [docs/pitch.md](docs/pitch.md).
+Full contributor guide: [docs/development.md](docs/development.md).
 
 ## Naming (hybrid scheme)
 
@@ -217,11 +246,18 @@ packaging, git hooks).
 
 ## Status
 
-Prototype, tested end-to-end (`just e2e`). Known gaps:
+Early prototype, tested end-to-end (`just e2e`). Current focus is getting
+10–20 engineers to run the two-node demo above — especially on edge, ARM /
+Raspberry Pi, across two networks, or in air-gapped labs — and report back.
+
+Known limitations:
 
 * no auth on the local registry — keep it on loopback
-* delegation / multi-key publishers (Radicle "delegates") is deferred: one
-  key is one publisher
+* delegation / multi-key publishers is deferred: one key is one publisher
 * relay and public discovery use the n0 infrastructure by default; use
   `--no-relay` and tickets/mDNS for fully offline swarms
 * `ocictl … | head` prints a broken-pipe panic (SIGPIPE is not reset)
+
+Feedback is most useful as a focused issue: hardware / network, exact
+commands, what you expected, and logs. See
+[open issues](https://github.com/safonas/ocid/issues).

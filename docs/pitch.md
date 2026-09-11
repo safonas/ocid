@@ -1,14 +1,19 @@
-# ocid: Peer-to-Peer OCI Image Distribution
+# ocid: local-first, peer-to-peer OCI distribution
 
-> **The Radicle of Container Images.** Local-first, cryptographically verified, serverless container distribution powered by iroh.
+> `ocid` is a local-first, peer-to-peer alternative to centralized OCI
+> registries, cryptographically verified, serverless, and designed for edge,
+> offline, and bandwidth-constrained environments.
 
 ---
 
-## Executive Summary
+## Why not just another registry?
 
-Centralized container registries (Docker Hub, Quay, ECR, GHCR) introduce single points of failure, egress bandwidth costs, regulatory/censorship risks, and severe bottlenecks in edge, air-gapped, and large-scale CI environments.
+Centralized registries (Docker Hub, Quay, ECR, GHCR) introduce single points
+of failure, egress bandwidth costs, regulatory and censorship risks, and
+severe bottlenecks in edge, air-gapped, and large-scale CI environments.
 
-**`ocid`** replaces centralized registries with a peer-to-peer distribution fabric:
+**`ocid`** is a peer-to-peer distribution fabric instead of another central
+server:
 - Every node runs an embedded OCI registry on `127.0.0.1:5050`. Existing developer workflows (`podman`, `docker`, `crane`, `oras`) work without modification.
 - Image distribution happens under the hood via **iroh** (QUIC, hole-punching, DERP relays, LAN mDNS) with incremental, verified streaming (BLAKE3 bao).
 - Cryptographic identities (Ed25519) replace registry accounts and centralized certificate authorities.
@@ -42,7 +47,11 @@ Centralized container registries (Docker Hub, Quay, ECR, GHCR) introduce single 
 
 ---
 
-## High-Value Use Cases
+## Who it is for
+
+Engineers working with containers, CI/CD, edge deployments, air-gapped
+environments, self-hosting, and supply-chain security — anywhere registry
+availability, egress costs, or infrastructure trust break the normal workflow.
 
 ### 1. Edge Computing, IoT & Remote Field Gateways
 * **Challenge**: Pushing multi-hundred-megabyte container updates to hundreds of IoT gateways or field devices simultaneously saturates constrained WAN or satellite backhauls.
@@ -77,3 +86,14 @@ Centralized container registries (Docker Hub, Quay, ECR, GHCR) introduce single 
 | **Bandwidth Scaling** | Linear server load & egress costs | Swarm-assisted peer-to-peer offloading |
 | **Air-Gap Capability** | Requires internal mirrors & DNS hacks | Native zero-config local mesh (mDNS) |
 | **Cache Management** | Manual script pruning or complex LRU | Declarative retention windows (`latest`, `last:N`, `pins`) |
+
+---
+
+## Status and feedback
+
+`ocid` is an early prototype. The most useful contribution right now is a
+reproducible test: run the two-node workflow in `README.md` on a Raspberry Pi
+or small ARM node, across two networks, or in an air-gapped lab, document the
+result, and
+[open an issue](https://github.com/safonas/ocid/issues) with hardware,
+commands, and logs.
