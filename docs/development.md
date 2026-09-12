@@ -27,7 +27,7 @@ just image       # runtime image: podman build -> localhost/ocid:dev
 just pkg         # .deb + .rpm for the host arch into ./dist (via pinned nfpm)
 just brew        # verify Homebrew tap formula syntax (brew audit)
 just brew-local  # test-install working tree through a local private tap
-just publish-release VER # automate release: CI checks, bump, tag, GH release, tap update
+just publish-release VER # automate release: CI checks, bump, tag, GH release, tap update (via PR)
 just hooks       # install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 just clean       # remove target volume, ./bin, ./dist
 ```
@@ -72,19 +72,28 @@ rolling base, so re-pin `RUNTIME_IMAGE` regularly to pick up fresh fixes.
 
 Releases are distributed via `safonas/homebrew-tap` (`brew install safonas/tap/ocid`).
 
-To cut a new release end-to-end:
+To cut a new release end-to-end (`main` is branch-protected, so the bump
+goes through a PR you merge manually):
 
 ```sh
-just publish-release <version>  # or scripts/release.sh <version>
+just cut-release <version>     # CI, bump, push release branch, open PR, then STOP
+# ... merge the PR ...
+just publish-release <version> # tag the merge, GH release (fires SLSA), tap update
 ```
 
-This script:
-1. Verifies the working tree is clean and runs `just ci` (all lints and tests).
-2. Bumps `Cargo.toml` and `Cargo.lock`.
-3. Commits, tags (`v<version>`), and pushes to GitHub and Radicle
-   (the Radicle push warns instead of failing if the node is offline).
-4. Creates the GitHub release (triggering SLSA package and provenance builds).
-5. Updates `Formula/ocid.rb` in `safonas/homebrew-tap`, audits with `brew audit`, and pushes the tap.
+`cut-release`:
+1. Verifies a clean tree on `main` in sync with `github/main`, and that the
+   tag doesn't exist yet.
+2. Runs `just ci` (all lints and tests).
+3. Bumps `Cargo.toml` and `Cargo.lock`, commits, pushes a `release/<version>`
+   branch and opens a PR — then stops for your manual merge.
+
+`publish-release` (run on `main` after the PR merged):
+1. Checks out an updated `main` whose `Cargo.toml` is at `<version>`.
+2. Creates and pushes tag `v<version>` (also mirrored to Radicle; the Radicle
+   push warns instead of failing if the node is offline).
+3. Creates the GitHub release (triggering SLSA package and provenance builds).
+4. Updates `Formula/ocid.rb` in `safonas/homebrew-tap`, audits with `brew audit`, and pushes the tap.
 
 A release-triggered CI job (`.github/workflows/brew-drift.yml`) asserts that the tap formula tracks the latest release and stays green.
 
