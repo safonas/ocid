@@ -35,6 +35,13 @@ repos:
         types: [shell]
         args: [--severity=warning]
 
+      - id: just-fmt
+        name: just --fmt --check
+        entry: just --fmt --check
+        language: system
+        files: (^justfile$|\.just$)
+        pass_filenames: false
+
       - id: cargo-fmt
         name: cargo fmt --check
         entry: just fmt-check
