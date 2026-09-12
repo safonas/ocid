@@ -21,8 +21,8 @@ use crossterm::{
 };
 use ocid_core::{
     api::{
-        DaemonEvent, GcReport, GcReq, OkResp, PeerInfo, ReleaseInfo, RmReq, RmResp, Status,
-        SyncReq, SyncResp,
+        DaemonEvent, GcReport, GcReq, MetricsSnapshot, OkResp, PeerInfo, ReleaseInfo, RmReq,
+        RmResp, Status, SyncReq, SyncResp,
     },
     client::Client,
     config::{Config, Mode, Policy},
@@ -35,7 +35,8 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Row, Table, TableState, Tabs,
+        Block, BorderType, Borders, Clear, Gauge, List, ListItem, Paragraph, Row, Sparkline, Table,
+        TableState, Tabs,
     },
     Frame, Terminal,
 };
@@ -44,6 +45,8 @@ const TICK: Duration = Duration::from_millis(150);
 const POLL: Duration = Duration::from_secs(2);
 const NOTICE: Duration = Duration::from_secs(3);
 const LOG_CAP: usize = 200;
+/// Points kept per sparkline (~4 min at the 2 s poll interval).
+const HIST: usize = 120;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -62,6 +65,7 @@ enum Tab {
     Images = 0,
     Peers = 1,
     Events = 2,
+    Metrics = 3,
 }
 
 impl Tab {
@@ -69,7 +73,8 @@ impl Tab {
         match self {
             Tab::Images => Tab::Peers,
             Tab::Peers => Tab::Events,
-            Tab::Events => Tab::Images,
+            Tab::Events => Tab::Metrics,
+            Tab::Metrics => Tab::Images,
         }
     }
 }
@@ -104,6 +109,12 @@ struct App {
     status: Option<Status>,
     releases: Vec<ReleaseInfo>,
     peers: Vec<PeerInfo>,
+    metrics: Option<MetricsSnapshot>,
+    /// Per-poll deltas for the sparklines (one point per `poll()`).
+    hist_http: Vec<u64>,
+    hist_bytes: Vec<u64>,
+    hist_repl: Vec<u64>,
+    hist_gossip: Vec<u64>,
     images: TableState,
     peer_rows: TableState,
     tab: Tab,
@@ -124,6 +135,11 @@ impl App {
             status: None,
             releases: Vec::new(),
             peers: Vec::new(),
+            metrics: None,
+            hist_http: Vec::new(),
+            hist_bytes: Vec::new(),
+            hist_repl: Vec::new(),
+            hist_gossip: Vec::new(),
             images: TableState::default(),
             peer_rows: TableState::default(),
             tab: Tab::Images,
@@ -151,9 +167,41 @@ impl App {
         if let Ok(p) = Policy::load(&self.paths) {
             self.policy = p;
         }
+        if let Ok(m) = self.client.get::<MetricsSnapshot>("/_ocid/metrics").await {
+            self.push_metrics(m);
+        }
         clamp(&mut self.images, self.releases.len());
         clamp(&mut self.peer_rows, self.peers.len());
         self.last_poll = Instant::now();
+    }
+
+    /// Record a fresh snapshot, keeping per-poll deltas for the sparklines.
+    fn push_metrics(&mut self, m: MetricsSnapshot) {
+        if let Some(prev) = &self.metrics {
+            push_delta(
+                &mut self.hist_http,
+                m.http_requests_total,
+                prev.http_requests_total,
+            );
+            push_delta(
+                &mut self.hist_bytes,
+                m.http_bytes_served,
+                prev.http_bytes_served,
+            );
+            push_delta(
+                &mut self.hist_repl,
+                m.releases_replicated.saturating_add(m.blobs_fetched),
+                prev.releases_replicated.saturating_add(prev.blobs_fetched),
+            );
+            push_delta(
+                &mut self.hist_gossip,
+                m.announcements_received
+                    .saturating_add(m.announcements_sent),
+                prev.announcements_received
+                    .saturating_add(prev.announcements_sent),
+            );
+        }
+        self.metrics = Some(m);
     }
 
     fn selected(&self) -> Option<&ReleaseInfo> {
@@ -164,7 +212,7 @@ impl App {
         let (state, len) = match self.tab {
             Tab::Images => (&mut self.images, self.releases.len()),
             Tab::Peers => (&mut self.peer_rows, self.peers.len()),
-            Tab::Events => return,
+            Tab::Events | Tab::Metrics => return,
         };
         if len == 0 {
             return;
@@ -446,6 +494,7 @@ impl App {
             KeyCode::Char('1') => self.tab = Tab::Images,
             KeyCode::Char('2') => self.tab = Tab::Peers,
             KeyCode::Char('3') => self.tab = Tab::Events,
+            KeyCode::Char('4') => self.tab = Tab::Metrics,
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Char('r') => self.poll().await,
@@ -471,6 +520,14 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+/// Push a saturating per-poll delta, keeping at most `HIST` points.
+fn push_delta(hist: &mut Vec<u64>, cur: u64, prev: u64) {
+    hist.push(cur.saturating_sub(prev));
+    if hist.len() > HIST {
+        hist.drain(..hist.len() - HIST);
     }
 }
 
@@ -619,8 +676,12 @@ fn panel(title: impl Into<String>, color: Color) -> Block<'static> {
 }
 
 fn ui(f: &mut Frame, app: &mut App) {
-    // The Events tab *is* the full log, so the bottom ticker collapses there.
-    let ticker = if app.tab == Tab::Events { 0 } else { 8 };
+    // The Events and Metrics tabs use the full body, so the bottom ticker
+    // collapses there.
+    let ticker = match app.tab {
+        Tab::Images | Tab::Peers => 8,
+        Tab::Events | Tab::Metrics => 0,
+    };
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -638,6 +699,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         Tab::Images => render_images(f, app, rows[2]),
         Tab::Peers => render_peers(f, app, rows[2]),
         Tab::Events => render_events(f, app, rows[2], usize::MAX, "Live Daemon Events (SSE)"),
+        Tab::Metrics => render_metrics(f, app, rows[2]),
     }
     if ticker > 0 {
         render_events(f, app, rows[3], 6, "Activity");
@@ -710,6 +772,7 @@ fn render_tabs(f: &mut Frame, app: &App, area: Rect) {
         ("1", "Images & Policy"),
         ("2", "Peers & Swarm"),
         ("3", "Events"),
+        ("4", "Metrics"),
     ]
     .map(|(n, t)| {
         Line::from(vec![
@@ -958,6 +1021,198 @@ fn render_peers(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_stateful_widget(table, area, &mut app.peer_rows);
 }
 
+/// btop-style metrics: sparklines of per-poll deltas on top, totals and
+/// gauges below. Rates are derived client-side from `/_ocid/metrics`
+/// snapshots, so no Prometheus text parsing is needed.
+fn render_metrics(f: &mut Frame, app: &App, area: Rect) {
+    let Some(m) = &app.metrics else {
+        f.render_widget(
+            Paragraph::new("waiting for /_ocid/metrics…").block(panel("Metrics", Color::Green)),
+            area,
+        );
+        return;
+    };
+    let graphs = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+        ])
+        .split(
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(9), Constraint::Min(8)])
+                .split(area)[0],
+        );
+    let body = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(9), Constraint::Min(8)])
+        .split(area)[1];
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .split(body);
+
+    spark(
+        f,
+        graphs[0],
+        "HTTP req/poll",
+        &app.hist_http,
+        m.http_requests_total,
+        Color::Cyan,
+    );
+    spark(
+        f,
+        graphs[1],
+        "Bytes served/poll",
+        &app.hist_bytes,
+        m.http_bytes_served,
+        Color::LightBlue,
+    );
+    spark(
+        f,
+        graphs[2],
+        "Replicated+blobs/poll",
+        &app.hist_repl,
+        m.releases_replicated.saturating_add(m.blobs_fetched),
+        Color::Green,
+    );
+    spark(
+        f,
+        graphs[3],
+        "Announcements/poll",
+        &app.hist_gossip,
+        m.announcements_received
+            .saturating_add(m.announcements_sent),
+        Color::Magenta,
+    );
+
+    let rows = [
+        ("http requests", m.http_requests_total.to_string()),
+        ("bytes served", human_bytes(m.http_bytes_served)),
+        ("bytes received", human_bytes(m.http_bytes_received)),
+        ("published", m.releases_published.to_string()),
+        ("replicated", m.releases_replicated.to_string()),
+        ("repl. failed", m.releases_failed.to_string()),
+        ("blobs fetched", m.blobs_fetched.to_string()),
+        ("blobs bytes", human_bytes(m.blobs_fetched_bytes)),
+        (
+            "announce rx/tx",
+            format!("{}/{}", m.announcements_received, m.announcements_sent),
+        ),
+        ("sync served", m.sync_requests_total.to_string()),
+        ("mdns found", m.mdns_discovered.to_string()),
+        (
+            "gc runs/rel/blobs",
+            format!(
+                "{}/{}/{}",
+                m.gc_runs, m.gc_releases_removed, m.gc_blobs_removed
+            ),
+        ),
+        ("gc bytes freed", human_bytes(m.gc_bytes_freed)),
+    ]
+    .map(|(k, v)| {
+        Row::new(vec![
+            Span::styled(k, Style::default().fg(Color::DarkGray)),
+            Span::raw(v),
+        ])
+    });
+    f.render_widget(
+        Table::new(rows, [Constraint::Length(18), Constraint::Min(10)])
+            .header(
+                Row::new(["COUNTER", "TOTAL"]).style(
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            )
+            .block(panel("Totals", Color::Green)),
+        cols[0],
+    );
+
+    let gauges = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(3),
+        ])
+        .split(cols[1]);
+    gauge(f, gauges[0], "Neighbors", m.neighbors.max(0) as u64, 16);
+    gauge(f, gauges[1], "Known peers", m.peers_known.max(0) as u64, 32);
+    gauge(
+        f,
+        gauges[2],
+        "Releases",
+        m.releases.max(0) as u64,
+        m.releases.max(0).max(10) as u64,
+    );
+    gauge(
+        f,
+        gauges[3],
+        "Gossip topics",
+        m.gossip_topics.max(0) as u64,
+        m.gossip_topics.max(0).max(4) as u64,
+    );
+    f.render_widget(
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled("uptime  ", Style::default().fg(Color::Cyan)),
+                Span::raw(format!("{}m", m.uptime_seconds / 60)),
+            ]),
+            Line::from(vec![
+                Span::styled("policy  ", Style::default().fg(Color::Cyan)),
+                Span::raw(format!("{}f/{}s", m.policy_follows, m.policy_seeds)),
+            ]),
+            Line::from(Span::styled(
+                "source: GET /_ocid/metrics (JSON); /metrics stays OpenMetrics for Prometheus",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .block(panel("State", Color::Yellow)),
+        gauges[4],
+    );
+}
+
+/// One sparkline panel: history graph plus the running total.
+fn spark(f: &mut Frame, area: Rect, title: &str, hist: &[u64], total: u64, color: Color) {
+    f.render_widget(panel(format!("{title} ({total})"), color), area);
+    let inner = Rect {
+        x: area.x + 1,
+        y: area.y + 1,
+        width: area.width.saturating_sub(2),
+        height: area.height.saturating_sub(2),
+    };
+    let split = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(2), Constraint::Length(1)])
+        .split(inner);
+    f.render_widget(
+        Sparkline::default()
+            .data(hist)
+            .style(Style::default().fg(color)),
+        split[0],
+    );
+    let last = hist.last().copied().unwrap_or(0);
+    f.render_widget(Paragraph::new(format!("last/poll {last}")), split[1]);
+}
+
+fn gauge(f: &mut Frame, area: Rect, label: &str, value: u64, max: u64) {
+    let max = max.max(1);
+    f.render_widget(
+        Gauge::default()
+            .block(Block::default().title(format!(" {label} ")))
+            .gauge_style(Style::default().fg(Color::LightGreen))
+            .ratio((value.min(max) as f64) / (max as f64))
+            .label(format!("{value}/{max}")),
+        area,
+    );
+}
+
 fn render_events(f: &mut Frame, app: &App, area: Rect, take: usize, title: &str) {
     let items: Vec<ListItem> = app
         .log
@@ -997,7 +1252,7 @@ fn render_footer(f: &mut Frame, area: Rect) {
     let hint = |t: &'static str| Span::raw(format!(" {t}  "));
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            key("1-3/Tab", Color::DarkGray, Color::White),
+            key("1-4/Tab", Color::DarkGray, Color::White),
             hint("tabs"),
             key("j/k", Color::DarkGray, Color::White),
             hint("select"),

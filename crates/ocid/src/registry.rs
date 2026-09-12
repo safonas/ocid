@@ -76,6 +76,7 @@ pub async fn serve(node: Arc<Node>, listener: tokio::net::TcpListener) {
         .route("/_ocid/gc", post(ctl_gc))
         .route("/_ocid/rm", post(ctl_rm))
         .route("/_ocid/events", get(ctl_events))
+        .route("/_ocid/metrics", get(ctl_metrics))
         .route("/metrics", get(metrics_get))
         .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(app.clone(), count_requests))
@@ -105,6 +106,7 @@ async fn count_requests(State(app): State<App>, req: Request, next: Next) -> Res
             status,
         })
         .inc();
+    app.node.metrics.http_requests_total.inc();
     if let Some(path) = path {
         app.node.emit(DaemonEvent::HttpRequest {
             method,
@@ -937,6 +939,15 @@ fn ctl_result<T: Serialize>(r: Result<T>) -> Response {
 
 async fn ctl_status(State(app): State<App>) -> Response {
     ctl_result(app.node.status().await)
+}
+
+/// `GET /_ocid/metrics` — JSON snapshot of `ocid_*` counters/gauges for
+/// `ocitop`. Always available, even with `--no-metrics` (unlike
+/// `GET /metrics`, which is OpenMetrics text for Prometheus and 404s when
+/// disabled).
+async fn ctl_metrics(State(app): State<App>) -> Response {
+    app.node.refresh_gauges().await;
+    Json(app.node.metrics.snapshot()).into_response()
 }
 
 async fn ctl_peers(State(app): State<App>) -> Response {

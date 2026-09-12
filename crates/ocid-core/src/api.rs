@@ -116,6 +116,39 @@ pub struct OkResp {
     pub ok: bool,
 }
 
+/// Point-in-time copy of the daemon's `ocid_*` counters and gauges.
+///
+/// Served as JSON by `GET /_ocid/metrics` for `ocitop` (and any other local
+/// consumer). Unlike `GET /metrics` (OpenMetrics text for Prometheus), this
+/// needs no text parsing: `ocitop` polls it and derives per-second rates
+/// client-side from successive snapshots.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MetricsSnapshot {
+    pub http_requests_total: u64,
+    pub http_bytes_served: u64,
+    pub http_bytes_received: u64,
+    pub releases_published: u64,
+    pub releases_replicated: u64,
+    pub releases_failed: u64,
+    pub blobs_fetched: u64,
+    pub blobs_fetched_bytes: u64,
+    pub announcements_received: u64,
+    pub announcements_sent: u64,
+    pub sync_requests_total: u64,
+    pub mdns_discovered: u64,
+    pub gossip_topics: i64,
+    pub gc_runs: u64,
+    pub gc_releases_removed: u64,
+    pub gc_blobs_removed: u64,
+    pub gc_bytes_freed: u64,
+    pub neighbors: i64,
+    pub peers_known: i64,
+    pub releases: i64,
+    pub policy_seeds: i64,
+    pub policy_follows: i64,
+    pub uptime_seconds: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResp {
     pub error: String,

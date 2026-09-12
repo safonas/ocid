@@ -90,6 +90,7 @@ impl SyncProtocol {
             .sync_requests
             .get_or_create(&SyncLabels { request: kind })
             .inc();
+        self.node.metrics.sync_requests_total.inc();
         match self.handle_inner(from, req).await {
             Ok(r) => r,
             Err(e) => Response::Error(e.to_string()),

@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use iroh_metrics::{Counter, EncodeLabelSet, Family, Gauge, MetricsGroup, MetricsSource, Registry};
+use ocid_core::api::MetricsSnapshot;
 
 /// Labels for registry HTTP requests.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, EncodeLabelSet)]
@@ -28,6 +29,10 @@ pub struct SyncLabels {
 pub struct Metrics {
     /// HTTP requests handled by the local registry and control API
     pub http_requests: Family<RequestLabels, Counter>,
+    /// Total HTTP requests (sum over all label combinations; families cannot
+    /// be iterated, so this is maintained alongside `http_requests` for the
+    /// JSON snapshot consumed by `ocitop`).
+    pub http_requests_total: Counter,
     /// Bytes of blob/manifest content served to local clients
     pub http_bytes_served: Counter,
     /// Bytes of blob content uploaded by local clients
@@ -50,6 +55,8 @@ pub struct Metrics {
     pub announcements_sent: Counter,
     /// Sync protocol requests served, by request type
     pub sync_requests: Family<SyncLabels, Counter>,
+    /// Total sync protocol requests (see `http_requests_total`).
+    pub sync_requests_total: Counter,
     /// ocid nodes discovered on the local network via mDNS
     pub mdns_discovered: Counter,
     /// Publisher announcement topics currently subscribed (incl. our own)
@@ -81,6 +88,40 @@ pub struct Metrics {
 /// The assembled registry, ready to be encoded on each scrape.
 pub struct Exporter {
     registry: Registry,
+}
+
+impl Metrics {
+    /// Point-in-time copy for `GET /_ocid/metrics`.
+    ///
+    /// Callers should invoke `Node::refresh_gauges` first so the gauges
+    /// reflect current state rather than the last `/metrics` scrape.
+    pub fn snapshot(&self) -> MetricsSnapshot {
+        MetricsSnapshot {
+            http_requests_total: self.http_requests_total.get(),
+            http_bytes_served: self.http_bytes_served.get(),
+            http_bytes_received: self.http_bytes_received.get(),
+            releases_published: self.releases_published.get(),
+            releases_replicated: self.releases_replicated.get(),
+            releases_failed: self.releases_failed.get(),
+            blobs_fetched: self.blobs_fetched.get(),
+            blobs_fetched_bytes: self.blobs_fetched_bytes.get(),
+            announcements_received: self.announcements_received.get(),
+            announcements_sent: self.announcements_sent.get(),
+            sync_requests_total: self.sync_requests_total.get(),
+            mdns_discovered: self.mdns_discovered.get(),
+            gossip_topics: self.gossip_topics.get(),
+            gc_runs: self.gc_runs.get(),
+            gc_releases_removed: self.gc_releases_removed.get(),
+            gc_blobs_removed: self.gc_blobs_removed.get(),
+            gc_bytes_freed: self.gc_bytes_freed.get(),
+            neighbors: self.neighbors.get(),
+            peers_known: self.peers_known.get(),
+            releases: self.releases.get(),
+            policy_seeds: self.policy_seeds.get(),
+            policy_follows: self.policy_follows.get(),
+            uptime_seconds: self.uptime_seconds.get(),
+        }
+    }
 }
 
 impl Exporter {
