@@ -17,6 +17,8 @@
 #   just hooks        install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 #   just image        build the runtime container image (Containerfile)
 #   just pkg          build .deb + .rpm for the host arch into ./dist (via nfpm)
+#   just android build  cross-compile release binaries for Android arm64 (Termux)
+#   just android pkg    package Android arm64 binaries into ./dist/ocid-android-arm64.tar.gz
 #   just brew         verify the Homebrew tap formula via brew audit
 #   just brew-local   brew-install the current working tree (no tag needed) for local testing
 #   just publish-release VER cut a release (CI checks, tag, GH release, tap update)
@@ -127,6 +129,14 @@ image:
     {{podman}} build -t {{image}} -f Containerfile .
 
 nfpm_image := "ghcr.io/goreleaser/nfpm:v2.47.0@sha256:a662cb167d7b6d3a83920c83d76b12d02b8ac5dd2c13e5c62c15270b23f6df0c"
+
+# Android arm64 (Termux) cross-build lives in the `android` submodule.
+mod android
+
+# Shim: `just android build`.
+build-android: android::build
+# Shim: `just android pkg`.
+pkg-android: android::pkg
 
 # Build .deb + .rpm for the host architecture into ./dist (needs release binaries).
 pkg: release
