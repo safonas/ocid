@@ -76,8 +76,10 @@ To cut a new release end-to-end (`main` is branch-protected, so the bump
 goes through a PR you merge manually):
 
 ```sh
+just sync                      # switch to main, fast-forward to github/main
 just cut-release <version>     # CI, bump, push release branch, open PR, then STOP
 # ... merge the PR ...
+just sync                      # pick up the merge
 just publish-release <version> # tag the merge, GH release (fires SLSA), tap update
 ```
 

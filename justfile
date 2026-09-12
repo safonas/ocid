@@ -1,6 +1,7 @@
 # Development happens inside podman; nothing but podman + just is required on the host.
 #
 #   just              list recipes
+#   just sync         switch to main and fast-forward to github/main
 #   just build        incremental debug build (cached registry + target volumes)
 #   just release      optimized build
 #   just check        cargo check
@@ -58,6 +59,16 @@ _default:
 volumes:
     @{{ podman }} volume exists {{ vol_registry }} || {{ podman }} volume create {{ vol_registry }} >/dev/null
     @{{ podman }} volume exists {{ vol_target }}   || {{ podman }} volume create {{ vol_target }}   >/dev/null
+
+# Switch to main and fast-forward it to github/main. Refuses on a dirty tree.
+[group('dev')]
+sync:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git diff --quiet && git diff --cached --quiet || { echo "error: working tree has uncommitted changes" >&2; exit 1; }
+    git checkout -q main
+    git pull github main --ff-only
+    git log --oneline -3
 
 # Incremental debug build.
 [group('dev')]
