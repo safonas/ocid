@@ -23,10 +23,9 @@ cut-release VERSION:
     [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "error: invalid semantic version '{{ VERSION }}'" >&2; exit 1; }
     tag="v$ver"
     branch="release/$ver"
-    [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "error: must be on main branch" >&2; exit 1; }
-    git fetch -q github
-    [ "$(git rev-parse HEAD)" = "$(git rev-parse github/main)" ] || { echo "error: local main differs from github/main; pull first" >&2; exit 1; }
     git diff --quiet && git diff --cached --quiet || { echo "error: working tree has uncommitted changes" >&2; exit 1; }
+    git checkout -q main
+    git pull github main --ff-only
     git rev-parse "$tag" >/dev/null 2>&1 && { echo "error: tag '$tag' already exists locally" >&2; exit 1; } || true
     git ls-remote --tags github "refs/tags/$tag" | grep -q "$tag" && { echo "error: tag '$tag' already exists on remote" >&2; exit 1; } || true
     git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null && { echo "error: branch '$branch' already exists locally" >&2; exit 1; } || true
@@ -42,8 +41,8 @@ cut-release VERSION:
     echo "-> merge the PR, then run: just publish-release $ver"
 
 # Phase 2 of a release: tag the merged bump, create the GitHub release
-# (fires the SLSA build) and update the Homebrew tap. Run on main AFTER
-# the cut-release PR has been merged.
+# (fires the SLSA build) and update the Homebrew tap. Run AFTER the
+# cut-release PR has been merged (switches to an updated main itself).
 [no-cd]
 [confirm("Publish the release? This tags, pushes the tag, creates a GitHub release and updates the tap.")]
 publish-release VERSION:
@@ -53,10 +52,9 @@ publish-release VERSION:
     ver="${ver#v}"
     [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "error: invalid semantic version '{{ VERSION }}'" >&2; exit 1; }
     tag="v$ver"
-    [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "error: must be on main branch" >&2; exit 1; }
     git diff --quiet && git diff --cached --quiet || { echo "error: working tree has uncommitted changes" >&2; exit 1; }
-    git fetch -q github
-    [ "$(git rev-parse HEAD)" = "$(git rev-parse github/main)" ] || { echo "error: local main differs from github/main; pull the merged release PR first" >&2; exit 1; }
+    git checkout -q main
+    git pull github main --ff-only
     grep -q "^version = \"$ver\"$" Cargo.toml || { echo "error: Cargo.toml is not at $ver; has the release PR merged?" >&2; exit 1; }
     git rev-parse "$tag" >/dev/null 2>&1 && { echo "error: tag '$tag' already exists locally" >&2; exit 1; } || true
     git ls-remote --tags github "refs/tags/$tag" | grep -q "$tag" && { echo "error: tag '$tag' already exists on remote" >&2; exit 1; } || true
