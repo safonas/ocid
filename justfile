@@ -17,8 +17,8 @@
 #   just hooks        install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 #   just image        build the runtime container image (Containerfile)
 #   just pkg          build .deb + .rpm for the host arch into ./dist (via nfpm)
-#   just build-android cross-compile release binaries for Android arm64 (Termux)
-#   just pkg-android  package Android arm64 binaries into ./dist/ocid-android-arm64.tar.gz
+#   just android build  cross-compile release binaries for Android arm64 (Termux)
+#   just android pkg    package Android arm64 binaries into ./dist/ocid-android-arm64.tar.gz
 #   just brew         verify the Homebrew tap formula via brew audit
 #   just brew-local   brew-install the current working tree (no tag needed) for local testing
 #   just publish-release VER cut a release (CI checks, tag, GH release, tap update)
@@ -130,73 +130,13 @@ image:
 
 nfpm_image := "ghcr.io/goreleaser/nfpm:v2.47.0@sha256:a662cb167d7b6d3a83920c83d76b12d02b8ac5dd2c13e5c62c15270b23f6df0c"
 
-# Android NDK for Termux (aarch64-linux-android, bionic libc).
-# Pinned LTS; API 26 keeps compat back to Android 8 while running fine on
-# current devices (Android 13+). The NDK zip (~700MB) is cached in a named volume
-# so re-builds don't re-download.
-android_target := "aarch64-linux-android"
-ndk_version := "r27d"
-ndk_api := "26"
-vol_ndk := project + "-android-ndk"
+# Android arm64 (Termux) cross-build lives in the `android` submodule.
+mod android
 
-# Cross-compile release binaries for Android arm64 (Termux).
-# Output stays in the target volume; use `just pkg-android` to export it.
-# NDK fetch runs once as root into the cache volume; the build itself runs
-# rootless like all other recipes.
-build-android: volumes
-    #!/usr/bin/env bash
-    set -euo pipefail
-    {{podman}} volume exists {{vol_ndk}} || {{podman}} volume create {{vol_ndk}} >/dev/null
-    {{podman}} run --rm \
-        -v {{vol_ndk}}:/opt/android-ndk \
-        -w /tmp \
-        {{rust_image}} sh -c 'set -e; \
-            if [ ! -d /opt/android-ndk/android-ndk-{{ndk_version}} ]; then \
-                apt-get update && apt-get install -y --no-install-recommends curl unzip ca-certificates; \
-                curl -sSfL https://dl.google.com/android/repository/android-ndk-{{ndk_version}}-linux.zip -o /opt/android-ndk/ndk.zip; \
-                unzip -q /opt/android-ndk/ndk.zip -d /opt/android-ndk; \
-                rm /opt/android-ndk/ndk.zip; \
-            fi'
-    {{podman}} run --rm --userns=keep-id \
-        -e CARGO_HOME=/usr/local/cargo \
-        -e CARGO_TARGET_DIR=/target \
-        -e CARGO_TERM_COLOR=always \
-        -e RUST_BACKTRACE=1 \
-        -v {{justfile_directory()}}:/src:Z \
-        -v {{vol_registry}}:/usr/local/cargo/registry \
-        -v {{vol_target}}:/target \
-        -v {{vol_ndk}}:/opt/android-ndk:ro \
-        -w /src \
-        {{rust_image}} sh -c 'set -e; \
-            export ANDROID_NDK_HOME=/opt/android-ndk/android-ndk-{{ndk_version}}; \
-            export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin; \
-            rustup target add {{android_target}}; \
-            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android{{ndk_api}}-clang; \
-            export CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android{{ndk_api}}-clang; \
-            export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar; \
-            cargo build --release --locked --target {{android_target}}'
-
-# Package Android arm64 binaries into ./dist (+ standalone files + tarball).
-# No .deb/.rpm: Termux has no systemd and installs to $PREFIX/bin.
-pkg-android: build-android
-    #!/usr/bin/env bash
-    set -euo pipefail
-    epoch=$(git log -1 --pretty=%ct)
-    mkdir -p dist
-    {{podman}} run --rm --userns=keep-id \
-        -e TAR_EPOCH="$epoch" \
-        -v {{vol_target}}:/target \
-        -v {{justfile_directory()}}/dist:/out:Z \
-        {{rust_image}} sh -c 'cp /target/{{android_target}}/release/ocid /out/ocid-android-arm64 \
-            && cp /target/{{android_target}}/release/ocictl /out/ocictl-android-arm64 \
-            && cp /target/{{android_target}}/release/ocitop /out/ocitop-android-arm64 \
-            && mkdir -p /out/.android-stage \
-            && cp /out/ocid-android-arm64 /out/.android-stage/ocid \
-            && cp /out/ocictl-android-arm64 /out/.android-stage/ocictl \
-            && cp /out/ocitop-android-arm64 /out/.android-stage/ocitop \
-            && cd /out && GZIP="-n" tar --sort=name --mtime="@$TAR_EPOCH" --owner=0 --group=0 --numeric-owner -czf ocid-android-arm64.tar.gz -C .android-stage ocid ocictl ocitop \
-            && rm -rf /out/.android-stage'
-    ls -l dist/ocid-android-arm64.tar.gz dist/ocid-android-arm64 dist/ocictl-android-arm64 dist/ocitop-android-arm64
+# Shim: `just android build`.
+build-android: android::build
+# Shim: `just android pkg`.
+pkg-android: android::pkg
 
 # Build .deb + .rpm for the host architecture into ./dist (needs release binaries).
 pkg: release
