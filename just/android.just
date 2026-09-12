@@ -27,6 +27,7 @@ ndk_api := "26"
 vol_ndk := project + "-android-ndk"
 
 # Cross-compile release binaries for Android arm64 (Termux) into the target volume.
+[no-cd]
 build:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -63,6 +64,7 @@ build:
             cargo build --release --locked --target {{android_target}}'
 
 # Package Android arm64 binaries into ./dist (standalone files + tarball, no .deb/.rpm).
+[no-cd]
 pkg: build
     #!/usr/bin/env bash
     set -euo pipefail
