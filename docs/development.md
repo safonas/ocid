@@ -76,10 +76,14 @@ To cut a new release end-to-end (`main` is branch-protected, so the bump
 goes through a PR you merge manually):
 
 ```sh
-just cut-release <version>     # CI, bump, push release branch, open PR, then STOP
+just cut-release <version>     # sync main, CI, bump, push release branch, open PR, then STOP
 # ... merge the PR ...
-just publish-release <version> # tag the merge, GH release (fires SLSA), tap update
+just publish-release <version> # sync main, tag the merge, GH release (fires SLSA), tap update
 ```
+
+Both recipes switch to an updated `main` by themselves (refusing on a
+dirty tree); `just sync` does the same standalone when you just want the
+latest `main`.
 
 `cut-release`:
 1. Verifies a clean tree on `main` in sync with `github/main`, and that the
