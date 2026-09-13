@@ -1,0 +1,70 @@
+name: Trivy Image Scan
+
+# The container image only changes with Rust sources, dependencies or the
+# Containerfile itself, so push/PR runs are path-filtered to those. The
+# weekly schedule always runs (catches base-image CVEs); the filesystem
+# scan and Scorecard live in security.yml and run unfiltered.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Containerfile'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/workflows/trivy-image.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Containerfile'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - '.github/workflows/trivy-image.yml'
+  schedule:
+    - cron: '0 2 * * 1' # Mondays at 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trivy-image:
+    name: Trivy (image)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build container image
+        run: docker build -t ocid:scan -f Containerfile .
+
+      - name: Scan container image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ocid:scan
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          # Fail only on fixable issues; Debian marks many findings
+          # will_not_fix/fix_deferred (verified locally: 56 CRIT/HIGH,
+          # 0 with a fix available). All findings still upload to SARIF.
+          ignore-unfixed: true
+          # Required: without this the action unsets the severity filter
+          # for SARIF output and the gate fires on ANY severity.
+          limit-severities-for-sarif: true
+          version: v0.70.0 # pinned Trivy binary; the vuln DB still updates daily
+
+      - name: Upload image results to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
