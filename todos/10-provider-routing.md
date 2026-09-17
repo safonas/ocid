@@ -1,5 +1,7 @@
 # Provider Routing & Swarm Bloom Filters
 
+> **Priority 10 · Tier 3 — scale:** cuts pull latency in large swarms; premature until swarms grow.
+
 ## Context
 When pulling an unseeded image on demand (`podman pull localhost:5050/<pub>/app:tag`), the local daemon sequentially probes candidate peers (`candidate_peers`) with `GetRelease` requests until one responds with the data. In large swarms, this introduces latency and unnecessary network hops.
 

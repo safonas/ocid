@@ -1,5 +1,7 @@
 # Loopback Token & Basic Authentication
 
+> **Priority 03 · Tier 2 — trust gate:** any local process can currently publish as your key; also unblocks non-loopback binds and edge Kubernetes.
+
 ## Context
 The embedded OCI registry binds to loopback (`127.0.0.1:5050`) with no authentication, relying entirely on host-level OS boundaries. Any local unprivileged user or compromised process on the host can push images to the registry, effectively publishing them under the node's Ed25519 identity.
 

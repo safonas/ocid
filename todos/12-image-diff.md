@@ -1,5 +1,7 @@
 # Image Release Diffing (`ocictl diff`)
 
+> **Priority 12 · Backlog:** demo appeal ("diff before you pull"); moderate effort, no dependencies.
+
 ## Context
 Operators and developers replicating images need visibility into what changes between release tags or between remote announcements before fetching gigabytes of layer data.
 

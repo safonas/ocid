@@ -1,5 +1,7 @@
 # Cross-Publisher Blob Discovery & Layer Deduplication
 
+> **Priority 09 · Tier 3 — scale:** big bandwidth win for base-layer-heavy fleets, but optimizes swarms that don't exist yet.
+
 ## Context
 Blobs in `ocid` are content-addressed by BLAKE3 hash, so identical layers (e.g. common base images like `debian:bookworm` or `alpine:latest`) already share disk space. However, discovery across unrelated publishers is isolated: when pulling an image from Publisher B, the node only queries peers seeding Publisher B, even if connected peers seeding Publisher A already hold identical layer chunks.
 
