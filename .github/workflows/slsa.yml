@@ -226,7 +226,10 @@ jobs:
     permissions:
       actions: read   # To read the workflow path.
       id-token: write # To sign the provenance.
-      contents: read  # Provenance is attached to the draft by the publish job.
+      # contents: write is required by the generator's job declarations even
+      # with upload-assets: false (GitHub validates every called-workflow job
+      # permission at startup, skipped jobs included).
+      contents: write
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.build-linux.outputs.digests }}"
