@@ -1,7 +1,7 @@
 # Release submodule: two-phase, PR-based releases (`main` is protected).
 #
 #   just ship cut-release VER      validate CI, bump, push branch, open PR, STOP
-#   just ship publish-release VER  tag the merge, GH release, tap update
+#   just ship publish-release VER  tag the merge, tap update, draft release + CI publish
 #   just ship publish VER           alias for publish-release
 #
 # Invoke from the repo root; `[no-cd]` keeps each recipe running there too
@@ -40,9 +40,12 @@ cut-release VERSION:
         --body "Version bump to $tag. After merging, run \`just publish-release $ver\` to tag and publish."
     echo "-> merge the PR, then run: just publish-release $ver"
 
-# Phase 2 of a release: tag the merged bump, create the GitHub release
-# (fires the SLSA build) and update the Homebrew tap. Run AFTER the
-# cut-release PR has been merged (switches to an updated main itself).
+# Phase 2 of a release: tag the merged bump, update the Homebrew tap,
+# open a draft GitHub release and dispatch the SLSA build. CI attaches
+# binaries, .deb/.rpm packages and SLSA provenance to the draft, then
+# publishes it as its last step (releases are immutable once published,
+# so the draft phase is required). Run AFTER the cut-release PR has been
+# merged (switches to an updated main itself).
 [no-cd]
 [confirm("Publish the release? This tags, pushes the tag, creates a GitHub release and updates the tap.")]
 publish-release VERSION:
@@ -103,9 +106,12 @@ publish-release VERSION:
     git -C "$tap" commit -am "ocid: bump to $tag"
     git -C "$tap" push origin main
     echo "Homebrew tap updated."
-    gh release create "$tag" --target main --title "$tag" --generate-notes
-    echo "Release URL: https://github.com/safonas/ocid/releases/tag/$tag"
-    gh run list --limit 3
+    gh release create "$tag" --draft --target main --title "$tag" --generate-notes
+    echo "Draft release: https://github.com/safonas/ocid/releases/tag/$tag"
+    gh workflow run slsa.yml --ref main -f tag="$tag"
+    echo "Dispatched the SLSA build; it attaches artifacts and publishes $tag on success."
+    sleep 10
+    gh run list --workflow slsa.yml --limit 1
 
 # Alias for publish-release (confirmation happens there).
 [no-cd]

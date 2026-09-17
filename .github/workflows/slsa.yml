@@ -13,8 +13,11 @@
 name: SLSA generic generator
 on:
   workflow_dispatch:
-  release:
-    types: [created]
+    inputs:
+      tag:
+        description: 'Tag of the draft release to attach artifacts to (e.g. v0.5.0)'
+        required: true
+        type: string
 
 jobs:
   build-linux:
@@ -24,6 +27,20 @@ jobs:
     outputs:
       digests: ${{ steps.hash.outputs.digests }}
     steps:
+      # Releases on this repo are immutable once published, so artifacts are
+      # attached to the draft release created by `just publish-release`; the
+      # publish job below flips it to published as the last step.
+      - name: Verify target release is a draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view '${{ inputs.tag }}' --json isDraft --jq .isDraft)" != "true" ]; then
+            echo "::error::release ${{ inputs.tag }} is not a draft; releases are immutable once published" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
@@ -138,17 +155,28 @@ jobs:
           echo "digests=$(sha256sum $files | base64 -w0)" >> "${GITHUB_OUTPUT}"
 
       - name: Upload release assets
-        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
+          gh release upload "${{ inputs.tag }}" dist/* --clobber
 
   build-macos:
     runs-on: macos-latest
     permissions:
       contents: write
     steps:
+      - name: Verify target release is a draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view '${{ inputs.tag }}' --json isDraft --jq .isDraft)" != "true" ]; then
+            echo "::error::release ${{ inputs.tag }} is not a draft; releases are immutable once published" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
@@ -187,19 +215,42 @@ jobs:
           cd target/x86_64-apple-darwin/release && tar -czf ../../../dist/ocid-darwin-amd64.tar.gz ocid ocictl ocitop && cd ../../..
 
       - name: Upload release assets
-        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
+          gh release upload "${{ inputs.tag }}" dist/* --clobber
 
   provenance:
     needs: [build-linux]
     permissions:
       actions: read   # To read the workflow path.
       id-token: write # To sign the provenance.
-      contents: write # To add assets to a release.
+      contents: write # To attach provenance to the draft release.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.build-linux.outputs.digests }}"
-      upload-assets: true # Optional: Upload to a new release
+      upload-assets: true
+      upload-tag-name: "${{ inputs.tag }}" # Release is a draft; its draft state is left untouched.
+
+  # Immutable releases freeze at publish time, so this must be the only job
+  # that publishes — and only after every artifact and the provenance are
+  # attached to the draft.
+  publish:
+    needs: [build-linux, build-macos, provenance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view '${{ inputs.tag }}' --json isDraft --jq .isDraft)" != "true" ]; then
+            echo "::error::release ${{ inputs.tag }} is not a draft; refusing to publish" >&2
+            exit 1
+          fi
+          gh release edit "${{ inputs.tag }}" --draft=false
+          echo "Published: https://github.com/safonas/ocid/releases/tag/${{ inputs.tag }}"

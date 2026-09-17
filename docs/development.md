@@ -78,7 +78,7 @@ goes through a PR you merge manually):
 ```sh
 just cut-release <version>     # sync main, CI, bump, push release branch, open PR, then STOP
 # ... merge the PR ...
-just publish-release <version> # sync main, tag the merge, GH release (fires SLSA), tap update
+just publish-release <version> # sync main, tag the merge, tap update, draft release (CI publishes)
 ```
 
 Both recipes switch to an updated `main` by themselves (refusing on a
@@ -96,10 +96,19 @@ latest `main`.
 1. Checks out an updated `main` whose `Cargo.toml` is at `<version>`.
 2. Creates and pushes tag `v<version>` (also mirrored to Radicle; the Radicle
    push warns instead of failing if the node is offline).
-3. Creates the GitHub release (triggering SLSA package and provenance builds).
-4. Updates `Formula/ocid.rb` in `safonas/homebrew-tap`, audits with `brew audit`, and pushes the tap.
+3. Updates `Formula/ocid.rb` in `safonas/homebrew-tap`, audits with `brew audit`, and pushes the tap.
+4. Creates a **draft** GitHub release and dispatches the SLSA workflow
+   (`.github/workflows/slsa.yml`), which builds binaries and `.deb`/`.rpm`
+   packages, attaches them plus SLSA provenance to the draft, and publishes
+   the release once all jobs succeed.
 
-A release-triggered CI job (`.github/workflows/brew-drift.yml`) asserts that the tap formula tracks the latest release and stays green.
+Releases on this repo are immutable once published, which is why the release
+stays a draft until CI has attached every asset. If the CI run fails, fix the
+cause and re-run it (`gh run rerun --failed`) or re-dispatch
+(`gh workflow run slsa.yml -f tag=v<version>`); the draft stays mutable.
+
+When CI publishes the release, `.github/workflows/brew-drift.yml` asserts
+that the tap formula tracks the latest release and stays green.
 
 To audit the formula syntax without cutting a release:
 ```sh
