@@ -226,12 +226,15 @@ jobs:
     permissions:
       actions: read   # To read the workflow path.
       id-token: write # To sign the provenance.
-      contents: write # To attach provenance to the draft release.
+      contents: read  # Provenance is attached to the draft by the publish job.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.build-linux.outputs.digests }}"
-      upload-assets: true
-      upload-tag-name: "${{ inputs.tag }}" # Release is a draft; its draft state is left untouched.
+      # The generator's release upload resolves releases by tag, which cannot
+      # see drafts — it would try to create a new release and hit the
+      # immutability guard. It uploads provenance as a workflow artifact
+      # instead; the publish job attaches it to the draft.
+      upload-assets: false
 
   # Immutable releases freeze at publish time, so this must be the only job
   # that publishes — and only after every artifact and the provenance are
@@ -241,8 +244,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read # To download the provenance artifact.
     steps:
-      - name: Publish the draft release
+      - name: Download provenance
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.provenance.outputs.provenance-name }}
+          path: provenance
+
+      - name: Attach provenance and publish the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -252,5 +262,6 @@ jobs:
             echo "::error::release ${{ inputs.tag }} is not a draft; refusing to publish" >&2
             exit 1
           fi
+          gh release upload "${{ inputs.tag }}" provenance/*.intoto.jsonl --clobber
           gh release edit "${{ inputs.tag }}" --draft=false
           echo "Published: https://github.com/safonas/ocid/releases/tag/${{ inputs.tag }}"
