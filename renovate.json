@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on monday"],
+  "pinDigests": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Digest-pinned container images in justfiles",
+      "managerFilePatterns": ["/^justfile$/", "/\\.just$/"],
+      "matchStrings": [
+        "\"(?<depName>[a-z0-9.-]+(?:/[a-z0-9._-]+)+):(?<currentValue>[^\"@]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "cargo minor and patch"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "actions minor and patch"
+    }
+  ]
+}
