@@ -3,6 +3,7 @@
 #   just ext install   npm install (creates package-lock.json)
 #   just ext build     build the extension (backend dist/ + webview media/)
 #   just ext check     typecheck (tsc + svelte-check)
+#   just ext test      unit tests for extension internals (no daemon)
 #   just ext smoke     run the extension client against a throwaway daemon
 #   just ext image     build the extension OCI artifact (scratch, for the catalog)
 #   just ext clean     remove build artifacts and dependencies
@@ -64,6 +65,11 @@ build:
 [no-cd]
 check:
     {{ _node }} npm run typecheck
+
+# Unit tests for extension internals (no daemon needed).
+[no-cd]
+test:
+    {{ _node }} node --experimental-strip-types --test scripts/transfers.test.mts
 
 # Functional smoke test: run the extension client (OcidClient + SseWatcher)
 # against a throwaway daemon on 127.0.0.1:5070. Needs ./bin/ocid — the root

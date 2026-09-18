@@ -12,6 +12,7 @@ import type {
 import type { PeerInfo, ReleaseInfo } from './types';
 import { OcidClient, OcidError } from './ocid-client';
 import { EventRing, SseWatcher } from './sse';
+import { TransferTracker } from './transfers';
 
 const POLL_MS = 2_000;
 
@@ -31,13 +32,19 @@ export class DashboardState {
   private readonly ring = new EventRing();
   private readonly sse: SseWatcher;
   private readonly deps: Dependencies;
-  private snapshot: StateSnapshot = { daemon: false, events: [] };
+  private readonly transfers = new TransferTracker();
+  private snapshot: StateSnapshot = { daemon: false, events: [], transfers: [] };
   private timer: NodeJS.Timeout | undefined;
   private polling = false;
 
   constructor(deps: Dependencies) {
     this.deps = deps;
-    this.sse = new SseWatcher(deps.client.base, this.ring, () => this.push());
+    this.sse = new SseWatcher(
+      deps.client.base,
+      this.ring,
+      () => this.push(),
+      ev => this.onEvent(ev),
+    );
   }
 
   start(): void {
@@ -61,20 +68,24 @@ export class DashboardState {
         this.deps.client.releases(),
         this.deps.client.peers(),
       ]);
+      this.transfers.prune();
       this.snapshot = {
         daemon: true,
         status,
         releases,
         peers,
         events: this.ring.snapshot(),
+        transfers: this.transfers.list(),
         error: this.snapshot.error,
       };
       this.push();
     } catch {
       const wasUp = this.snapshot.daemon;
+      this.transfers.clear();
       this.snapshot = {
         daemon: false,
         events: this.ring.snapshot(),
+        transfers: [],
         error: wasUp ? undefined : this.snapshot.error,
       };
       this.ring.clear();
@@ -82,6 +93,17 @@ export class DashboardState {
     } finally {
       this.polling = false;
     }
+  }
+
+  /** SSE events drive the live views (transfers strip, event stream)
+   *  immediately, without waiting for the next poll. */
+  private onEvent(ev: DaemonEvent): void {
+    this.transfers.onEvent(ev);
+    this.snapshot = {
+      ...this.snapshot,
+      events: this.ring.snapshot(),
+      transfers: this.transfers.list(),
+    };
   }
 
   push(): void {
