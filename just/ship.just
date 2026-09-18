@@ -2,6 +2,7 @@
 #
 #   just ship cut-release VER      validate CI, bump, push branch, open PR, STOP
 #   just ship publish-release VER  tag the merge, tap update, draft release + CI publish
+#   just ship republish VER        re-dispatch the release build for an existing draft
 #   just ship publish VER           alias for publish-release
 #
 # Invoke from the repo root; `[no-cd]` keeps each recipe running there too
@@ -106,6 +107,33 @@ publish-release VERSION:
     echo "Draft release: https://github.com/safonas/ocid/releases/tag/$tag"
     gh workflow run slsa.yml --ref main -f tag="$tag"
     echo "Dispatched the SLSA build; it attaches artifacts and publishes $tag on success."
+    sleep 10
+    gh run list --workflow slsa.yml --limit 1
+
+# Retry publishing a release whose CI run failed: re-dispatches the SLSA
+# workflow against the existing draft release. Drafts stay mutable under
+# immutable releases, so partial uploads are simply clobbered. Builds run
+# from the tag, so main having moved on is fine.
+[no-cd]
+[confirm("Re-dispatch the release build?")]
+republish VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ver="{{ VERSION }}"
+    ver="${ver#v}"
+    [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "error: invalid semantic version '{{ VERSION }}'" >&2; exit 1; }
+    tag="v$ver"
+    git ls-remote --tags github "refs/tags/$tag" | grep -q "$tag" || { echo "error: tag '$tag' does not exist on github" >&2; exit 1; }
+    if ! gh release view "$tag" >/dev/null 2>&1; then
+        echo "error: no GitHub release for '$tag'; run 'just publish-release $ver' instead" >&2
+        exit 1
+    fi
+    if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != "true" ]; then
+        echo "error: release '$tag' is already published and immutable; assets cannot be changed" >&2
+        exit 1
+    fi
+    gh workflow run slsa.yml --ref main -f tag="$tag"
+    echo "Re-dispatched the SLSA build for $tag; it publishes the release on success."
     sleep 10
     gh run list --workflow slsa.yml --limit 1
 

@@ -24,6 +24,7 @@
 #   just brew-local   brew-install the current working tree (no tag needed) for local testing
 #   just cut-release VER     validate CI, bump version, push release branch, open PR (manual merge)
 #   just publish-release VER tag the merge, tap update, draft release + CI publish
+#   just republish VER       retry a failed release CI run (re-dispatch the draft build)
 #   just clean        remove target volume + ./bin + ./dist
 #
 # All dev recipes bind-mount the source tree (:Z for SELinux) and keep the
@@ -184,6 +185,9 @@ cut-release VERSION: (ship::cut-release VERSION)
 # Shim: `just ship publish-release`.
 [group('release')]
 publish-release VERSION: (ship::publish-release VERSION)
+# Shim: `just ship republish` (retry a failed release CI run).
+[group('release')]
+republish VERSION: (ship::republish VERSION)
 # Alias for publish-release (confirmation happens there).
 [group('release')]
 publish VERSION: (ship::publish-release VERSION)

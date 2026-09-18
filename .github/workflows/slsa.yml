@@ -41,7 +41,11 @@ jobs:
             exit 1
           fi
 
+      # Build exactly the tagged tree, not the dispatch ref: retries after
+      # main moved on (just republish) still produce the release's bits.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.98.1
@@ -180,7 +184,10 @@ jobs:
             exit 1
           fi
 
+      # Build exactly the tagged tree, not the dispatch ref (see build-linux).
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.98.1

@@ -105,9 +105,9 @@ instead of failing the fast-forward.
    the release once all jobs succeed.
 
 Releases on this repo are immutable once published, which is why the release
-stays a draft until CI has attached every asset. If the CI run fails, fix the
-cause and re-run it (`gh run rerun --failed`) or re-dispatch
-(`gh workflow run slsa.yml -f tag=v<version>`); the draft stays mutable.
+stays a draft until CI has attached every asset. If the CI run fails, fix
+the cause and retry with `just republish <version>` (builds always run from
+the tag, so main having moved on is fine).
 
 When CI publishes the release, `.github/workflows/brew-drift.yml` asserts
 that the tap formula tracks the latest release and stays green.
