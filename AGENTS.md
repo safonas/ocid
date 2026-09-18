@@ -22,8 +22,10 @@ and signed release records.
 The host is an ostree-based Fedora with rootless Podman and SELinux enforcing.
 **Do not run cargo/rustc directly on the host.** Always use `just` recipes, which
 execute inside a container with cached volumes and proper `:Z` SELinux bind mounts.
-Do not use `/tmp` for scratch work; keep temporary files inside the workspace
-(e.g. `./.dev/`) so they stay on the same filesystem and SELinux context.
+Builder images are Wolfi-based (Chainguard) and pinned by digest: rust + node for
+compilation, wolfi-base for the runtime image. Do not use `/tmp` for scratch work;
+keep temporary files inside the workspace (e.g. `./.dev/`) so they stay on the same
+filesystem and SELinux context.
 
 ### Essential commands
 

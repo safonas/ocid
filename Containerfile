@@ -7,23 +7,24 @@
 #   podman exec ocid ocictl status
 #
 # Base images are pinned by digest for reproducible builds; the tag is kept
-# for readability. Override with --build-arg if needed.
-ARG BUILDER_IMAGE=docker.io/library/rust:1.98.1-slim-bookworm@sha256:ebd900bae66fd508b466cef82d64a83a5fb34682e4c8b2797a42908bddc95a57
+# for readability. Override with --build-arg if needed. Both are Wolfi-based
+# (Chainguard).
+ARG BUILDER_IMAGE=cgr.dev/chainguard/rust@sha256:635c2f1ae6306ebcbeda3857013f065be7e1ed5dff0f8aff7a6a7a1bce459cac
 # Wolfi rolling base (re-pin regularly for fresh security fixes).
 ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:6a8dca4c2153cfc11d559cfa6172c187b896423d833f3d48a4c1c44ab55596d7
-ARG SOURCE_DATE_EPOCH=1726012800
+ARG SOURCE_DATE_EPOCH=[PHONE]
 
 # ---------------------------------------------------------------------------
 # builder
 # ---------------------------------------------------------------------------
 FROM ${BUILDER_IMAGE} AS builder
 
-ENV SOURCE_DATE_EPOCH=1726012800
-ENV RUSTFLAGS="--remap-path-prefix=/src=/build"
+# Chainguard images run as a non-root uid by default; the build needs to
+# write to /src (COPY'd as root).
+USER root
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+ENV SOURCE_DATE_EPOCH=[PHONE]
+ENV RUSTFLAGS="--remap-path-prefix=/src=/build"
 
 WORKDIR /src
 
