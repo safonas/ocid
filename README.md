@@ -253,6 +253,11 @@ See [docs/development.md](docs/development.md) for the full contributor guide
 (`just` recipes, e2e tests, reproducible container builds, `.deb`/`.rpm`
 packaging, git hooks).
 
+A Podman Desktop extension (dashboard over the daemon's control API) lives in
+[`extensions/podman-desktop`](extensions/podman-desktop/README.md) — build it
+with the `just ext-*` recipes and load the folder into Podman Desktop for
+local testing.
+
 ## Security
 
 Vulnerability reports are handled privately — see [SECURITY.md](SECURITY.md).
