@@ -56,7 +56,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
         with:
-          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,aarch64-linux-android
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
 
       - name: Cache cargo builds
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -65,11 +65,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
-
-      - name: Install Android NDK (Termux / aarch64-linux-android)
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
-        with:
-          packages: 'platform-tools platforms;android-34 build-tools;34.0.0 ndk;27.2.12479018'
 
       # ========================================================
       #
@@ -91,17 +86,6 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
           cargo build --release --locked --target aarch64-unknown-linux-gnu
 
-          # Build Android arm64 (Termux, bionic libc).
-          # API 26 keeps compat back to Android 8 while running fine on
-          # current devices (Android 13+). No .deb/.rpm: Termux has no systemd
-          # and installs to $PREFIX/bin instead of /usr/bin.
-          NDK="$ANDROID_HOME/ndk/27.2.12479018"
-          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/aarch64-linux-android26-clang"
-          export CC_aarch64_linux_android="$TOOLCHAIN/aarch64-linux-android26-clang"
-          export AR_aarch64_linux_android="$TOOLCHAIN/llvm-ar"
-          cargo build --release --locked --target aarch64-linux-android
-
           mkdir -p dist
 
           # Standalone binaries
@@ -111,9 +95,6 @@ jobs:
           cp target/aarch64-unknown-linux-gnu/release/ocid dist/ocid-linux-arm64
           cp target/aarch64-unknown-linux-gnu/release/ocictl dist/ocictl-linux-arm64
           cp target/aarch64-unknown-linux-gnu/release/ocitop dist/ocitop-linux-arm64
-          cp target/aarch64-linux-android/release/ocid dist/ocid-android-arm64
-          cp target/aarch64-linux-android/release/ocictl dist/ocictl-android-arm64
-          cp target/aarch64-linux-android/release/ocitop dist/ocitop-android-arm64
 
           # Deterministic tarballs
           GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
@@ -121,9 +102,6 @@ jobs:
 
           GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
             -czf dist/ocid-linux-arm64.tar.gz -C target/aarch64-unknown-linux-gnu/release ocid ocictl ocitop
-
-          GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
-            -czf dist/ocid-android-arm64.tar.gz -C target/aarch64-linux-android/release ocid ocictl ocitop
 
       - name: Build .deb and .rpm packages
         env:
@@ -164,7 +142,7 @@ jobs:
           set -euo pipefail
 
           cd dist
-          files=(./ocid-linux-* ./ocictl-linux-* ./ocitop-linux-* ./ocid-android-* ./ocictl-android-* ./ocitop-android-* ./*.deb ./*.rpm)
+          files=(./ocid-linux-* ./ocictl-linux-* ./ocitop-linux-* ./*.deb ./*.rpm)
           # Generate the subjects (base64 encoded).
           echo "digests=$(sha256sum "${files[@]}" | base64 -w0)" >> "${GITHUB_OUTPUT}"
 

@@ -18,8 +18,6 @@
 #   just hooks        install git hooks via pre-commit (fmt/clippy/just-fmt on commit, tests on push)
 #   just image        build the runtime container image (Containerfile)
 #   just pkg          build .deb + .rpm for the host arch into ./dist (via nfpm)
-#   just android build  cross-compile release binaries for Android arm64 (Termux)
-#   just android pkg    package Android arm64 binaries into ./dist/ocid-android-arm64.tar.gz
 #   just brew         verify the Homebrew tap formula via brew audit
 #   just brew-local   brew-install the current working tree (no tag needed) for local testing
 #   just cut-release VER     validate CI, bump version, push release branch, open PR (manual merge)
@@ -155,17 +153,6 @@ hooks:
 # (Implementation lives in the `packaging` submodule.)
 [group('package')]
 image: packaging::image
-
-# Android arm64 (Termux) cross-build lives in the `android` submodule.
-[group('package')]
-mod android 'just/android.just'
-
-# Shim: `just android build`.
-[group('package')]
-build-android: android::build
-# Shim: `just android pkg`.
-[group('package')]
-pkg-android: android::pkg
 
 # Native packages, container image and brews live in the `packaging` submodule.
 [group('package')]
