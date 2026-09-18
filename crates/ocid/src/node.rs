@@ -23,11 +23,11 @@ use iroh_gossip::{
 use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use iroh_tickets::endpoint::EndpointTicket;
 use ocid_core::{
-    api::{DaemonEvent, GcReport, GcReq, PeerInfo, RmResp, Status},
-    config::{self, Config, Peers, Policy},
+    api::{DaemonEvent, GcReport, GcReq, PeerInfo, PolicyChangeResp, RmResp, Status},
+    config::{self, Config, Mode, Peers, Policy},
     hash::Blake3,
-    identity::{did_key, Identity, PublisherId},
-    oci::Digest,
+    identity::{did_key, parse_publisher, Identity, PublisherId},
+    oci::{Digest, ImageRef},
     paths::Paths,
     release::{BlobRef, Referrer, Release, ReleaseSummary},
 };
@@ -363,6 +363,105 @@ impl Node {
             tracing::warn!("enforcing windows after reload: {e}");
         }
         Ok(())
+    }
+
+    /// Apply a policy mutation: run `f` on a copy of the current policy,
+    /// persist it, swap it in, and bring subscriptions and windows in line —
+    /// the same effects a reload would have. The file is only rewritten when
+    /// `f` succeeds, so a rejected change leaves everything untouched.
+    async fn mutate_policy<T>(
+        self: &Arc<Self>,
+        f: impl FnOnce(&mut Policy) -> Result<T>,
+    ) -> Result<T> {
+        let mut p = self.policy().await;
+        let out = f(&mut p)?;
+        p.save(&self.paths)?;
+        *self.policy.write().await = p;
+        tracing::info!("policy changed");
+        self.sync_topics().await;
+        // Windows may have shrunk: prune right away.
+        if let Err(e) = self.enforce_all_windows().await {
+            tracing::warn!("enforcing windows after policy change: {e}");
+        }
+        Ok(out)
+    }
+
+    pub async fn seed(self: &Arc<Self>, reference: &str, mode: Mode) -> Result<PolicyChangeResp> {
+        self.mutate_policy(|p| {
+            let r = ImageRef::parse(reference, p, &self.id())?;
+            if r.publisher == self.id() {
+                bail!("{r} is published by this node; it is always seeded");
+            }
+            let changed = p.add_seed(&r.to_string(), mode)?;
+            Ok(PolicyChangeResp {
+                changed,
+                reference: r.to_string(),
+            })
+        })
+        .await
+    }
+
+    pub async fn unseed(self: &Arc<Self>, reference: &str) -> Result<PolicyChangeResp> {
+        self.mutate_policy(|p| {
+            let r = ImageRef::parse(reference, p, &self.id())?;
+            let changed = p.remove_seed(&r.to_string())?;
+            Ok(PolicyChangeResp {
+                changed,
+                reference: r.to_string(),
+            })
+        })
+        .await
+    }
+
+    pub async fn follow(self: &Arc<Self>, publisher: &str, mode: Mode) -> Result<PolicyChangeResp> {
+        self.mutate_policy(|p| {
+            let pubs = parse_publisher(publisher)?;
+            let changed = p.add_follow(&pubs, mode);
+            Ok(PolicyChangeResp {
+                changed,
+                reference: pubs.to_string(),
+            })
+        })
+        .await
+    }
+
+    pub async fn unfollow(self: &Arc<Self>, publisher: &str) -> Result<PolicyChangeResp> {
+        self.mutate_policy(|p| {
+            let pubs = parse_publisher(publisher)?;
+            let changed = p.remove_follow(&pubs);
+            Ok(PolicyChangeResp {
+                changed,
+                reference: pubs.to_string(),
+            })
+        })
+        .await
+    }
+
+    pub async fn pin(self: &Arc<Self>, reference: &str) -> Result<PolicyChangeResp> {
+        self.mutate_policy(|p| {
+            let r = ImageRef::parse(reference, p, &self.id())?;
+            if r.tag.is_none() {
+                bail!("a pin needs a tag: {r}:<tag>");
+            }
+            let changed = p.add_pin(&r.to_string())?;
+            Ok(PolicyChangeResp {
+                changed,
+                reference: r.to_string(),
+            })
+        })
+        .await
+    }
+
+    pub async fn unpin(self: &Arc<Self>, reference: &str) -> Result<PolicyChangeResp> {
+        self.mutate_policy(|p| {
+            let r = ImageRef::parse(reference, p, &self.id())?;
+            let changed = p.remove_pin(&r.to_string())?;
+            Ok(PolicyChangeResp {
+                changed,
+                reference: r.to_string(),
+            })
+        })
+        .await
     }
 
     // -----------------------------------------------------------------------

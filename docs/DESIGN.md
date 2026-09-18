@@ -206,6 +206,13 @@ flowchart LR
 * `enforce_window` runs after every replication and on policy reload: releases
   outside the window are removed and their blobs unpinned. Own releases and
   pins are never touched.
+* The daemon is the **single policy writer** while it runs:
+  `POST /_ocid/policy/{seed,unseed,follow,unfollow,pin,unpin}` mutate
+  `policy.toml` (alias-resolving the reference), persist it, resubscribe
+  gossip topics and enforce windows in one step — the same effects a reload
+  would have. `ocictl` uses these endpoints when the daemon is running and
+  falls back to editing the file directly when it is not. The reply is
+  `{changed, reference}` with the canonical rule.
 * Everything the policy does not name is **cache**: on-demand pulls and
   leftovers of removed rules. GC keeps cache for `gc_grace_secs` after it was
   fetched, then drops it. `ocictl gc --force` ignores the grace period.
