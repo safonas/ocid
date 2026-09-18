@@ -41,7 +41,7 @@ jobs:
           # Required: without this the action unsets the severity filter
           # for SARIF output and the gate fires on ANY severity.
           limit-severities-for-sarif: true
-          version: v0.70.0 # pinned Trivy binary; the vuln DB still updates daily
+          version: v0.74.0 # pinned Trivy binary; the vuln DB still updates daily
 
       - name: Scan working tree
         if: always()
@@ -58,18 +58,18 @@ jobs:
           # Required: without this the action unsets the severity filter
           # for SARIF output and the gate fires on ANY severity.
           limit-severities-for-sarif: true
-          version: v0.70.0 # pinned Trivy binary; the vuln DB still updates daily
+          version: v0.74.0 # pinned Trivy binary; the vuln DB still updates daily
 
       - name: Upload image results to code scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
 
       - name: Upload working tree results to code scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
@@ -94,6 +94,6 @@ jobs:
           publish_results: true
 
       - name: Upload results to code scanning
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
         with:
           sarif_file: results.sarif
