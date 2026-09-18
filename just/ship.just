@@ -61,7 +61,18 @@ publish-release VERSION:
     git tag -a "$tag" -m "Release $tag"
     git push github "$tag"
     if git remote get-url rad >/dev/null 2>&1; then
-        git push rad main "$tag" || echo "warning: push to rad remote failed" >&2
+        # Best-effort Radicle mirror. rad/main can hold stale pre-squash
+        # history; if its tree matches main, a force push is a lossless
+        # mirror update (same rule as scripts/sync-main.sh).
+        git push rad "$tag" || echo "warning: tag push to rad remote failed" >&2
+        if ! git push rad main; then
+            if git fetch -q rad main && git diff --quiet FETCH_HEAD main; then
+                echo "note: rad/main has stale history; force-pushing mirror"
+                git push --force rad main
+            else
+                echo "warning: rad/main has unique content; main not mirrored, reconcile manually" >&2
+            fi
+        fi
     else
         echo "warning: no rad remote configured, skipping Radicle mirror" >&2
     fi

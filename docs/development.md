@@ -97,7 +97,8 @@ instead of failing the fast-forward.
 `publish-release` (run on `main` after the PR merged):
 1. Checks out an updated `main` whose `Cargo.toml` is at `<version>`.
 2. Creates and pushes tag `v<version>` (also mirrored to Radicle; the Radicle
-   push warns instead of failing if the node is offline).
+   push warns instead of failing if the node is offline, and force-updates
+   rad/main when a squash merge left it with stale-but-equivalent history).
 3. Updates `Formula/ocid.rb` in `safonas/homebrew-tap`, audits with `brew audit`, and pushes the tap.
 4. Creates a **draft** GitHub release and dispatches the SLSA workflow
    (`.github/workflows/slsa.yml`), which builds binaries and `.deb`/`.rpm`
