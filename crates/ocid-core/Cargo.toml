@@ -19,8 +19,9 @@ bs58 = { workspace = true }
 uuid = { workspace = true }
 dirs = { workspace = true }
 tracing = { workspace = true }
-reqwest = { workspace = true, optional = true }
+    reqwest = { workspace = true, optional = true }
+    rustls = { workspace = true, optional = true }
 
 [features]
 # HTTP client for the daemon control API (used by ocictl/ocitop, not the daemon).
-client = ["dep:reqwest"]
+client = ["dep:reqwest", "dep:rustls"]

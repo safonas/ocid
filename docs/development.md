@@ -3,7 +3,9 @@
 Everything builds inside podman; only `podman` and `just` are needed on the host.
 All `just` recipes run in pinned builder containers (Wolfi-based Chainguard
 images, digest-pinned: rust for cargo, node for the Podman Desktop extension)
-with cached registry/target volumes and proper `:Z` SELinux bind mounts —
+with cached registry/target volumes and shared `:z` SELinux bind mounts (one
+label for every builder container, so a long-running `just run` daemon keeps
+working while other recipes run) —
 never run `cargo`/`rustc` or `npm` directly on the host.
 
 ## Recipes

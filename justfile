@@ -31,8 +31,11 @@
 #   just republish VER       retry a failed release CI run (re-dispatch the draft build)
 #   just clean        remove target volume + ./bin + ./dist
 #
-# All dev recipes bind-mount the source tree (:Z for SELinux) and keep the
-# cargo registry and the target dir in named volumes so rebuilds are fast.
+# All dev recipes bind-mount the source tree with the shared SELinux label
+# (`:z`, not a private `:Z` — per-container categories would break a running
+# `just run` daemon whenever another recipe relabels the tree under it) and
+# keep the cargo registry and the target dir in named volumes so rebuilds
+# are fast.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 # `mod` needs 1.31+, `set lazy` 1.47+: fail fast with a clear error on old just.
@@ -63,7 +66,7 @@ host_gid := `id -g`
 # CARGO_HOME lives under /tmp (always writable) with the registry cache in
 # the named volume, and HOME=/tmp keeps rustup from dropping a .rustup into
 # the bind-mounted source tree.
-_builder := podman + " run --rm" + " --userns=keep-id" + " --user " + host_uid + ":" + host_gid + ' --entrypoint ""' + " -e HOME=/tmp" + " -e CARGO_HOME=/tmp/cargo" + " -e CARGO_TARGET_DIR=/target" + " -e CARGO_TERM_COLOR=always" + " -e RUST_BACKTRACE=1" + " -v " + justfile_directory() + ":/src:Z" + " -v " + vol_registry + ":/tmp/cargo/registry" + " -v " + vol_target + ":/target" + " -w /src"
+_builder := podman + " run --rm" + " --userns=keep-id" + " --user " + host_uid + ":" + host_gid + ' --entrypoint ""' + " -e HOME=/tmp" + " -e CARGO_HOME=/tmp/cargo" + " -e CARGO_TARGET_DIR=/target" + " -e CARGO_TERM_COLOR=always" + " -e RUST_BACKTRACE=1" + " -v " + justfile_directory() + ":/src:z" + " -v " + vol_registry + ":/tmp/cargo/registry" + " -v " + vol_target + ":/target" + " -w /src"
 
 builder := _builder + " " + rust_image
 builder_tty := _builder + " -it " + rust_image
@@ -170,7 +173,7 @@ bin: build
     @mkdir -p bin
     {{ podman }} run --rm --userns=keep-id --user {{ host_uid }}:{{ host_gid }} --entrypoint "" \
         -v {{ vol_target }}:/target \
-        -v {{ justfile_directory() }}/bin:/out:Z \
+        -v {{ justfile_directory() }}/bin:/out:z \
         {{ rust_image }} sh -c 'for b in ocid ocictl ocitop; do cp /target/debug/$b /out/.$b.new && mv -f /out/.$b.new /out/$b; done'
     @echo "-> bin/ocid bin/ocictl bin/ocitop"
 

@@ -50,15 +50,15 @@ pkg:
     mkdir -p "$stage"
     {{ podman }} run --rm --userns=keep-id --user {{ host_uid }}:{{ host_gid }} --entrypoint "" \
         -v {{ vol_target }}:/target \
-        -v {{ justfile_directory() }}/dist:/out:Z \
+        -v {{ justfile_directory() }}/dist:/out:z \
         {{ rust_image }} sh -c "cp /target/release/ocid /target/release/ocictl /target/release/ocitop /out/stage/"
     sed -e "s|@@VERSION@@|$ver|g" -e "s|@@ARCH@@|$nfpm_arch|g" -e "s|@@STAGE@@|$stage|g" \
         packaging/nfpm.yaml > "$cfg"
     {{ podman }} run --rm \
-        -v {{ justfile_directory() }}:/work:Z -w /work \
+        -v {{ justfile_directory() }}:/work:z -w /work \
         {{ nfpm_image }} package --config "$cfg" --packager deb --target dist/
     {{ podman }} run --rm \
-        -v {{ justfile_directory() }}:/work:Z -w /work \
+        -v {{ justfile_directory() }}:/work:z -w /work \
         {{ nfpm_image }} package --config "$cfg" --packager rpm --target dist/
     rm -rf "$stage" "$cfg"
     ls dist/
