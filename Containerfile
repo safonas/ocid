@@ -11,7 +11,7 @@
 # (Chainguard).
 ARG BUILDER_IMAGE=cgr.dev/chainguard/rust@sha256:7d70867ec51393a4e04db3a0c4d89d91c7eab1ee0fe4650107116de6d2bea096
 # Wolfi rolling base (re-pin regularly for fresh security fixes).
-ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:6a8dca4c2153cfc11d559cfa6172c187b896423d833f3d48a4c1c44ab55596d7
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:32d119bfa89c4302e0608f5c120b39c6b8f80b592c7fb46aa27008b2669ce220
 ARG SOURCE_DATE_EPOCH=[PHONE]
 
 # ---------------------------------------------------------------------------
