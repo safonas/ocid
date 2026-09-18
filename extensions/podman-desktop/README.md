@@ -12,6 +12,16 @@ whenever the daemon fetches an image from peers — your own pulls *and*
 background replication of followed publishers. Publishers get a stable color
 across the releases table, peers list, and event stream.
 
+The extension also hooks into Podman Desktop itself:
+
+- **Toasts** when a followed publisher ships a release, with a one-click
+  *Pull* that runs `podman pull` as a task in the task widget (until the
+  phase-2 insecure-registry onboarding lands, the pull uses
+  `--tls-verify=false`).
+- **Push image to ocid peers** on the Images page context menu: pushes the
+  image to the daemon's registry as a visible task — the daemon signs it and
+  announces it, so peers following you replicate it automatically.
+
 ## Status
 
 Phase 1 (dashboard). Phase 2 (daemon lifecycle, insecure-registry
