@@ -81,18 +81,19 @@ just cut-release <version>     # sync main, CI, bump, push release branch, open 
 just publish-release <version> # sync main, tag the merge, tap update, draft release (CI publishes)
 ```
 
-Both recipes switch to an updated `main` by themselves (refusing on a
+`publish-release` switches to an updated `main` by itself (refusing on a
 dirty tree); `just sync` does the same standalone when you just want the
-latest `main`. The sync tolerates squash-merged PRs: when the remote's
-squashed commit has the same tree as local `main`, it resets to the remote
-instead of failing the fast-forward.
+latest `main`. Both tolerate squash-merged PRs: when the remote's squashed
+commit has the same tree as local `main`, they reset to the remote instead
+of failing the fast-forward. `cut-release` never touches local `main` — it
+cuts the release branch straight from the fetched `github/main` tip.
 
 `cut-release`:
-1. Verifies a clean tree on `main` in sync with `github/main`, and that the
-   tag doesn't exist yet.
-2. Runs `just ci` (all lints and tests).
-3. Bumps `Cargo.toml` and `Cargo.lock`, commits, pushes a `release/<version>`
-   branch and opens a PR — then stops for your manual merge.
+1. Verifies a clean tree and that the tag and branch don't exist yet.
+2. Cuts `release/<version>` directly from the fetched `github/main` tip
+   and runs `just ci` (all lints and tests) on it.
+3. Bumps `Cargo.toml` and `Cargo.lock`, commits, pushes the branch and
+   opens a PR — then stops for your manual merge.
 
 `publish-release` (run on `main` after the PR merged):
 1. Checks out an updated `main` whose `Cargo.toml` is at `<version>`.

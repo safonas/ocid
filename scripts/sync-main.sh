@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Sync local main with github/main, tolerating squash-merged PRs.
+# Used by `just sync` and `just publish-release` (which must check out the
+# merged main); `cut-release` doesn't need it — it branches straight off
+# the fetched github/main tip and never touches local main.
 #
 # A plain `git pull --ff-only` breaks after every squash merge: local main
 # then holds the PR's individual commits while the remote holds the squashed

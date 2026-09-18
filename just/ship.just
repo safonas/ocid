@@ -14,6 +14,9 @@ set minimum-version := "1.47.0"
 # Phase 1 of a release: validate CI, bump the version, push a release
 # branch and open a PR. STOPS there: merge the PR manually, then run
 # `just publish-release VER` to tag and publish.
+#
+# The branch is cut straight from the fetched github/main tip: local main
+# is never touched, so squash merges on origin cannot diverge it.
 [confirm("Cut release branch + PR? This runs full CI, commits the version bump and pushes.")]
 [no-cd]
 cut-release VERSION:
@@ -24,16 +27,17 @@ cut-release VERSION:
     [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "error: invalid semantic version '{{ VERSION }}'" >&2; exit 1; }
     tag="v$ver"
     branch="release/$ver"
-    scripts/sync-main.sh
+    git diff --quiet && git diff --cached --quiet || { echo "error: working tree has uncommitted changes" >&2; exit 1; }
     git rev-parse "$tag" >/dev/null 2>&1 && { echo "error: tag '$tag' already exists locally" >&2; exit 1; } || true
     git ls-remote --tags github "refs/tags/$tag" | grep -q "$tag" && { echo "error: tag '$tag' already exists on remote" >&2; exit 1; } || true
     git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null && { echo "error: branch '$branch' already exists locally" >&2; exit 1; } || true
+    git fetch -q github main
+    git checkout -b "$branch" github/main
     just ci
     sed -i -e "s|^version = \".*\"|version = \"$ver\"|" Cargo.toml
     just check
     git add Cargo.toml Cargo.lock
     git commit -m "chore(release): bump version to $tag"
-    git checkout -b "$branch"
     git push -u github "$branch"
     gh pr create --base main --head "$branch" --title "Release $tag" \
         --body "Version bump to $tag. After merging, run \`just publish-release $ver\` to tag and publish."
