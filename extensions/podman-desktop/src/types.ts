@@ -40,6 +40,8 @@ export type DaemonEvent =
   | { type: 'gossip'; publisher: string; name: string; tag: string; outbound: boolean }
   | { type: 'pruned'; publisher: string; name: string; tag: string; reason: string }
   | { type: 'release_saved'; publisher: string; name: string; tag: string; blobs: number }
+  | { type: 'pull_progress'; publisher: string; name: string; tag: string; blobs_done: number; blobs_total: number; bytes_done: number; bytes_total: number }
+  | { type: 'fetch_failed'; publisher: string; name: string; tag: string; error: string }
   | { type: 'peer_change'; id: string; connected: boolean }
   | { type: 'http_request'; method: string; path: string; status: number };
 

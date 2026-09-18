@@ -224,6 +224,24 @@ pub enum DaemonEvent {
         tag: String,
         blobs: usize,
     },
+    /// Incremental progress of a release being fetched from peers.
+    /// Terminal state is `release_saved` (success) or `fetch_failed`.
+    PullProgress {
+        publisher: PublisherId,
+        name: String,
+        tag: String,
+        blobs_done: usize,
+        blobs_total: usize,
+        bytes_done: u64,
+        bytes_total: u64,
+    },
+    /// A release fetch from peers failed.
+    FetchFailed {
+        publisher: PublisherId,
+        name: String,
+        tag: String,
+        error: String,
+    },
     /// A peer connected or disconnected.
     PeerChange { id: EndpointId, connected: bool },
     /// An HTTP request was processed by the registry or control API.

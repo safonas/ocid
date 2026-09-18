@@ -227,6 +227,37 @@ impl App {
                 format!("{}/{name}:{tag} ({reason})", short(&publisher)),
                 Color::Yellow,
             ),
+            DaemonEvent::PullProgress {
+                publisher,
+                name,
+                tag,
+                blobs_done,
+                blobs_total,
+                bytes_done,
+                bytes_total,
+            } => {
+                let pct = (bytes_done * 100).checked_div(bytes_total).unwrap_or(100);
+                self.log(
+                    "PULL",
+                    format!(
+                        "{}/{name}:{tag} {blobs_done}/{blobs_total} blobs · {} / {} ({pct}%)",
+                        short(&publisher),
+                        human_bytes(bytes_done),
+                        human_bytes(bytes_total)
+                    ),
+                    Color::Cyan,
+                )
+            }
+            DaemonEvent::FetchFailed {
+                publisher,
+                name,
+                tag,
+                error,
+            } => self.log(
+                "FAIL",
+                format!("{}/{name}:{tag} — {error}", short(&publisher)),
+                Color::Red,
+            ),
             DaemonEvent::PeerChange { id, connected } => self.log(
                 "PEER",
                 format!(

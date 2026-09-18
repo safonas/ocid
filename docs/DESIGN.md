@@ -333,8 +333,9 @@ type, mDNS discoveries, gossip topics, GC runs/removals, gauges for
 neighbors/peers/releases) and iroh's endpoint and gossip metrics (`iroh_*`).
 
 `GET /_ocid/events` serves a Server-Sent Events (SSE) stream of `DaemonEvent`s
-(gossip announcements, releases saved, window prunes, peer connections, and HTTP
-requests) consumed in real time by `ocitop`.
+(gossip announcements, releases saved, transfer progress and fetch failures,
+window prunes, peer connections, and HTTP requests) consumed in real time by
+`ocitop`.
 
 ## Podman Desktop extension
 

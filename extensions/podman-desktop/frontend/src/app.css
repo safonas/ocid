@@ -275,6 +275,10 @@ td.actions :global(button) {
   color: var(--ocid-ok);
 }
 
+.log .pull span:nth-child(2) {
+  color: var(--ocid-link);
+}
+
 .log .pruned span:nth-child(2) {
   color: var(--ocid-warn);
 }
