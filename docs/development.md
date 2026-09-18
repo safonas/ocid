@@ -81,16 +81,18 @@ just cut-release <version>     # sync main, CI, bump, push release branch, open 
 just publish-release <version> # sync main, tag the merge, tap update, draft release (CI publishes)
 ```
 
-Both recipes switch to an updated `main` by themselves (refusing on a
+`publish-release` switches to an updated `main` by itself (refusing on a
 dirty tree); `just sync` does the same standalone when you just want the
-latest `main`.
+latest `main`. `cut-release` never touches local `main` — it cuts the
+release branch straight from the fetched `github/main` tip, so local main
+only ever advances by fast-forwarding to `github/main`.
 
 `cut-release`:
-1. Verifies a clean tree on `main` in sync with `github/main`, and that the
-   tag doesn't exist yet.
-2. Runs `just ci` (all lints and tests).
-3. Bumps `Cargo.toml` and `Cargo.lock`, commits, pushes a `release/<version>`
-   branch and opens a PR — then stops for your manual merge.
+1. Verifies a clean tree and that the tag and branch don't exist yet.
+2. Cuts `release/<version>` directly from the fetched `github/main` tip
+   and runs `just ci` (all lints and tests) on it.
+3. Bumps `Cargo.toml` and `Cargo.lock`, commits, pushes the branch and
+   opens a PR — then stops for your manual merge.
 
 `publish-release` (run on `main` after the PR merged):
 1. Checks out an updated `main` whose `Cargo.toml` is at `<version>`.
@@ -103,9 +105,9 @@ latest `main`.
    the release once all jobs succeed.
 
 Releases on this repo are immutable once published, which is why the release
-stays a draft until CI has attached every asset. If the CI run fails, fix the
-cause and re-run it (`gh run rerun --failed`) or re-dispatch
-(`gh workflow run slsa.yml -f tag=v<version>`); the draft stays mutable.
+stays a draft until CI has attached every asset. If the CI run fails, fix
+the cause and retry with `just republish <version>` (builds always run from
+the tag, so main having moved on is fine).
 
 When CI publishes the release, `.github/workflows/brew-drift.yml` asserts
 that the tap formula tracks the latest release and stays green.

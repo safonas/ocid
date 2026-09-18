@@ -2,6 +2,7 @@
 #
 #   just ship cut-release VER      validate CI, bump, push branch, open PR, STOP
 #   just ship publish-release VER  tag the merge, tap update, draft release + CI publish
+#   just ship republish VER        re-dispatch the release build for an existing draft
 #   just ship publish VER           alias for publish-release
 #
 # Invoke from the repo root; `[no-cd]` keeps each recipe running there too
@@ -13,8 +14,11 @@ set minimum-version := "1.47.0"
 # Phase 1 of a release: validate CI, bump the version, push a release
 # branch and open a PR. STOPS there: merge the PR manually, then run
 # `just publish-release VER` to tag and publish.
-[no-cd]
+#
+# The branch is cut straight from the fetched github/main tip: local main
+# is never touched by the release flow.
 [confirm("Cut release branch + PR? This runs full CI, commits the version bump and pushes.")]
+[no-cd]
 cut-release VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -24,17 +28,16 @@ cut-release VERSION:
     tag="v$ver"
     branch="release/$ver"
     git diff --quiet && git diff --cached --quiet || { echo "error: working tree has uncommitted changes" >&2; exit 1; }
-    git checkout -q main
-    git pull github main --ff-only
     git rev-parse "$tag" >/dev/null 2>&1 && { echo "error: tag '$tag' already exists locally" >&2; exit 1; } || true
     git ls-remote --tags github "refs/tags/$tag" | grep -q "$tag" && { echo "error: tag '$tag' already exists on remote" >&2; exit 1; } || true
     git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null && { echo "error: branch '$branch' already exists locally" >&2; exit 1; } || true
+    git fetch -q github main
+    git checkout -b "$branch" github/main
     just ci
     sed -i -e "s|^version = \".*\"|version = \"$ver\"|" Cargo.toml
     just check
     git add Cargo.toml Cargo.lock
     git commit -m "chore(release): bump version to $tag"
-    git checkout -b "$branch"
     git push -u github "$branch"
     gh pr create --base main --head "$branch" --title "Release $tag" \
         --body "Version bump to $tag. After merging, run \`just publish-release $ver\` to tag and publish."
@@ -46,8 +49,8 @@ cut-release VERSION:
 # publishes it as its last step (releases are immutable once published,
 # so the draft phase is required). Run AFTER the cut-release PR has been
 # merged (switches to an updated main itself).
-[no-cd]
 [confirm("Publish the release? This tags, pushes the tag, creates a GitHub release and updates the tap.")]
+[no-cd]
 publish-release VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -110,6 +113,33 @@ publish-release VERSION:
     echo "Draft release: https://github.com/safonas/ocid/releases/tag/$tag"
     gh workflow run slsa.yml --ref main -f tag="$tag"
     echo "Dispatched the SLSA build; it attaches artifacts and publishes $tag on success."
+    sleep 10
+    gh run list --workflow slsa.yml --limit 1
+
+# Retry publishing a release whose CI run failed: re-dispatches the SLSA
+# workflow against the existing draft release. Drafts stay mutable under
+# immutable releases, so partial uploads are simply clobbered. Builds run
+# from the tag, so main having moved on is fine.
+[confirm("Re-dispatch the release build?")]
+[no-cd]
+republish VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ver="{{ VERSION }}"
+    ver="${ver#v}"
+    [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "error: invalid semantic version '{{ VERSION }}'" >&2; exit 1; }
+    tag="v$ver"
+    git ls-remote --tags github "refs/tags/$tag" | grep -q "$tag" || { echo "error: tag '$tag' does not exist on github" >&2; exit 1; }
+    if ! gh release view "$tag" >/dev/null 2>&1; then
+        echo "error: no GitHub release for '$tag'; run 'just publish-release $ver' instead" >&2
+        exit 1
+    fi
+    if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != "true" ]; then
+        echo "error: release '$tag' is already published and immutable; assets cannot be changed" >&2
+        exit 1
+    fi
+    gh workflow run slsa.yml --ref main -f tag="$tag"
+    echo "Re-dispatched the SLSA build for $tag; it publishes the release on success."
     sleep 10
     gh run list --workflow slsa.yml --limit 1
 

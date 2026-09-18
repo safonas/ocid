@@ -1,7 +1,7 @@
 # Development happens inside podman; nothing but podman + just is required on the host.
 #
 #   just              list recipes
-#   just sync         switch to main and fast-forward to github/main
+#   just sync         switch to main and fast-forward it to github/main
 #   just build        incremental debug build (cached registry + target volumes)
 #   just release      optimized build
 #   just check        cargo check
@@ -23,7 +23,8 @@
 #   just brew         verify the Homebrew tap formula via brew audit
 #   just brew-local   brew-install the current working tree (no tag needed) for local testing
 #   just cut-release VER     validate CI, bump version, push release branch, open PR (manual merge)
-#   just publish-release VER tag the merge, create GH release, update tap (run after the PR merged)
+#   just publish-release VER tag the merge, tap update, draft release + CI publish
+#   just republish VER       retry a failed release CI run (re-dispatch the draft build)
 #   just clean        remove target volume + ./bin + ./dist
 #
 # All dev recipes bind-mount the source tree (:Z for SELinux) and keep the
@@ -61,6 +62,8 @@ volumes:
     @{{ podman }} volume exists {{ vol_target }}   || {{ podman }} volume create {{ vol_target }}   >/dev/null
 
 # Switch to main and fast-forward it to github/main. Refuses on a dirty tree.
+# Nothing in the release flow commits to main, so this is always a plain
+# fast-forward; anything else means manual work that needs a human decision.
 [group('dev')]
 sync:
     #!/usr/bin/env bash
@@ -188,6 +191,9 @@ cut-release VERSION: (ship::cut-release VERSION)
 # Shim: `just ship publish-release`.
 [group('release')]
 publish-release VERSION: (ship::publish-release VERSION)
+# Shim: `just ship republish` (retry a failed release CI run).
+[group('release')]
+republish VERSION: (ship::republish VERSION)
 # Alias for publish-release (confirmation happens there).
 [group('release')]
 publish VERSION: (ship::publish-release VERSION)
