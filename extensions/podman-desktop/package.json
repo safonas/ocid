@@ -58,7 +58,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@tsconfig/node22": "^22.0.2",
     "@tsconfig/svelte": "^5.0.4",
-    "@types/node": "^22.19.0",
+    "@types/node": "^24.0.0",
     "@types/qrcode": "^1.5.5",
     "qrcode": "^1.5.4",
     "svelte": "^5.57.0",
