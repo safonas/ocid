@@ -162,7 +162,18 @@ assert_eq "POST upload into $B/ -> 403" 403 "$code"
 # ---------------------------------------------------------------------------
 
 log "podman pull on B of an image it never saw"
+# B fetches from A here; listen on its stream for the transfer-progress events.
+curl -sN --max-time 60 "http://$REG_B/_ocid/events" >"$WORK/events-b.log" &
+EVENTS_B_PID=$!
+sleep 0.5
 podman pull -q --tls-verify=false "$REG_B/$A/alpine:1" >/dev/null && ok "podman pull via B succeeded" || fail "podman pull via B"
+sleep 0.5
+kill "$EVENTS_B_PID" 2>/dev/null || true
+wait "$EVENTS_B_PID" 2>/dev/null || true
+evb=$(cat "$WORK/events-b.log")
+assert_contains "pull_progress events during on-demand fetch" "$evb" '"type":"pull_progress"'
+assert_not_contains "no fetch_failed during on-demand fetch" "$evb" '"type":"fetch_failed"'
+assert_contains "release_saved event on the fetching node" "$evb" '"type":"release_saved"'
 assert_contains "B now holds alpine:1 (cache, no policy)" "$(ctl_b ls)" "alpine"
 assert_contains "ls shows '-' policy for cached image" "$(ctl_b ls | awk 'NR>1 && $2=="alpine"')" " - "
 out=$(podman run --rm "$REG_B/$A/alpine:1" echo hello-from-p2p)

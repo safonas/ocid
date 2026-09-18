@@ -933,9 +933,19 @@ impl Node {
         };
         self.inflight.lock().await.remove(&reference);
         match &res {
-            Ok(()) => self.metrics.releases_replicated.inc(),
-            Err(_) => self.metrics.releases_failed.inc(),
-        };
+            Ok(()) => {
+                self.metrics.releases_replicated.inc();
+            }
+            Err(e) => {
+                self.metrics.releases_failed.inc();
+                self.emit(DaemonEvent::FetchFailed {
+                    publisher: *release.publisher(),
+                    name: release.name().to_string(),
+                    tag: release.payload.tag.clone(),
+                    error: e.to_string(),
+                });
+            }
+        }
         res
     }
 
@@ -946,42 +956,65 @@ impl Node {
     ) -> Result<()> {
         let providers: Vec<EndpointId> =
             providers.into_iter().filter(|p| p != &self.id()).collect();
-        let total = release.all_blobs().count();
+        let blobs: Vec<_> = release.all_blobs().collect();
+        let total = blobs.len();
+        let bytes_total: u64 = blobs.iter().map(|b| b.size).sum();
+        let publisher = *release.publisher();
+        let name = release.name().to_string();
+        let tag = release.payload.tag.clone();
+        self.emit(DaemonEvent::PullProgress {
+            publisher,
+            name: name.clone(),
+            tag: tag.clone(),
+            blobs_done: 0,
+            blobs_total: total,
+            bytes_done: 0,
+            bytes_total,
+        });
         let mut fetched = 0usize;
-        for b in release.all_blobs() {
-            if self.store.has_hash(b.hash).await? {
-                if self.store.blob_ref(&b.digest)?.is_none() {
-                    self.store.verify_blob(b).await?;
-                    self.store.record_blob(b).await?;
+        let mut bytes_done: u64 = 0;
+        for (i, b) in blobs.into_iter().enumerate() {
+            if !self.store.has_hash(b.hash).await? {
+                if providers.is_empty() {
+                    bail!("no providers for blob {}", b.digest);
                 }
-                continue;
+                tracing::info!(
+                    "fetching {} ({} bytes) for {}",
+                    b.digest,
+                    b.size,
+                    release.reference()
+                );
+                // Keep the blob-store GC away until the blob is pinned.
+                let _protect = self.store.protect(b.hash).await?;
+                self.downloader
+                    .download(b.hash.to_iroh(), Shuffled::new(providers.clone()))
+                    .await
+                    .map_err(|e| anyhow!("downloading {}: {e}", b.digest))?;
+                self.store.verify_blob(b).await?;
+                self.store.record_blob(b).await?;
+                self.metrics.blobs_fetched.inc();
+                self.metrics.blobs_fetched_bytes.inc_by(b.size);
+                fetched += 1;
+            } else if self.store.blob_ref(&b.digest)?.is_none() {
+                self.store.verify_blob(b).await?;
+                self.store.record_blob(b).await?;
             }
-            if providers.is_empty() {
-                bail!("no providers for blob {}", b.digest);
-            }
-            tracing::info!(
-                "fetching {} ({} bytes) for {}",
-                b.digest,
-                b.size,
-                release.reference()
-            );
-            // Keep the blob-store GC away until the blob is pinned.
-            let _protect = self.store.protect(b.hash).await?;
-            self.downloader
-                .download(b.hash.to_iroh(), Shuffled::new(providers.clone()))
-                .await
-                .map_err(|e| anyhow!("downloading {}: {e}", b.digest))?;
-            self.store.verify_blob(b).await?;
-            self.store.record_blob(b).await?;
-            self.metrics.blobs_fetched.inc();
-            self.metrics.blobs_fetched_bytes.inc_by(b.size);
-            fetched += 1;
+            bytes_done += b.size;
+            self.emit(DaemonEvent::PullProgress {
+                publisher,
+                name: name.clone(),
+                tag: tag.clone(),
+                blobs_done: i + 1,
+                blobs_total: total,
+                bytes_done,
+                bytes_total,
+            });
         }
         let stored = self.store.put_release(release)?;
         self.emit(DaemonEvent::ReleaseSaved {
-            publisher: *release.publisher(),
-            name: release.name().to_string(),
-            tag: release.payload.tag.clone(),
+            publisher,
+            name,
+            tag,
             blobs: total,
         });
         tracing::info!(
