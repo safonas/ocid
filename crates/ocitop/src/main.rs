@@ -574,8 +574,8 @@ async fn listen_sse(client: Client, tx: tokio::sync::mpsc::Sender<DaemonEvent>) 
     }
 }
 
-async fn run<B: ratatui::backend::Backend>(
-    terminal: &mut Terminal<B>,
+async fn run(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
     rx: &mut tokio::sync::mpsc::Receiver<DaemonEvent>,
 ) -> Result<()> {

@@ -19,6 +19,11 @@ on:
         required: true
         type: string
 
+# Read-only default; every job that needs more declares it at job level
+# (least-privilege token, OSSF Scorecard Token-Permissions).
+permissions:
+  contents: read
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest

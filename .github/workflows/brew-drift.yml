@@ -10,6 +10,10 @@ on:
     types: [published]
   workflow_dispatch:
 
+# Least-privilege default token (OSSF Scorecard Token-Permissions).
+permissions:
+  contents: read
+
 jobs:
   drift:
     runs-on: ubuntu-latest
