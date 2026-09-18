@@ -94,8 +94,10 @@ console.log('ok  error surface');
 
 // --- misc endpoints ----------------------------------------------------------
 
+// The synced peer count depends on the environment (mDNS finds daemons
+// running on this host/LAN); only failures would be a bug.
 const sync = await client.sync();
-assert.equal(sync.synced, 0);
+assert.deepEqual(sync.failed, []);
 const gc = await client.gc(true, false);
 assert.equal(gc.dry_run, true);
 const rm = await client.rm(tagged, false);
