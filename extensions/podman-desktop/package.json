@@ -34,8 +34,20 @@
       {
         "command": "ocid.openDashboard",
         "title": "ocid: Open dashboard"
+      },
+      {
+        "command": "ocid.image.push",
+        "title": "ocid: Push image to peers"
       }
-    ]
+    ],
+    "menus": {
+      "dashboard/image": [
+        {
+          "command": "ocid.image.push",
+          "title": "Push image to ocid peers"
+        }
+      ]
+    }
   },
   "devDependencies": {
     "@fortawesome/fontawesome-free": "^7.3.1",

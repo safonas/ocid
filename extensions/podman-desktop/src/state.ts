@@ -10,9 +10,9 @@ import type {
   WebviewMessage,
 } from './types';
 import type { PeerInfo, ReleaseInfo } from './types';
-import { OcidClient, OcidError } from './ocid-client';
-import { EventRing, SseWatcher } from './sse';
-import { TransferTracker } from './transfers';
+import { OcidClient, OcidError } from './ocid-client.ts';
+import { EventRing, SseWatcher } from './sse.ts';
+import { TransferTracker } from './transfers.ts';
 
 const POLL_MS = 2_000;
 
@@ -21,6 +21,8 @@ interface Dependencies {
   webview: WebviewLike;
   confirm: (message: string, ok: string) => Promise<boolean>;
   notify: (message: string, error: boolean) => void;
+  /** Fired once per release that a *followed* publisher shipped (not ours). */
+  onFollowedRelease?: (publisher: string, name: string, tag: string) => void;
 }
 
 /** The slice of the podman-desktop webview API this state talks to. */
@@ -33,6 +35,7 @@ export class DashboardState {
   private readonly sse: SseWatcher;
   private readonly deps: Dependencies;
   private readonly transfers = new TransferTracker();
+  private readonly notified = new Set<string>();
   private snapshot: StateSnapshot = { daemon: false, events: [], transfers: [] };
   private timer: NodeJS.Timeout | undefined;
   private polling = false;
@@ -82,6 +85,7 @@ export class DashboardState {
     } catch {
       const wasUp = this.snapshot.daemon;
       this.transfers.clear();
+      this.notified.clear();
       this.snapshot = {
         daemon: false,
         events: this.ring.snapshot(),
@@ -99,6 +103,22 @@ export class DashboardState {
    *  immediately, without waiting for the next poll. */
   private onEvent(ev: DaemonEvent): void {
     this.transfers.onEvent(ev);
+    // Surface releases from followed publishers to the host UI (toasts);
+    // deduped per reference, reset when the daemon goes away.
+    if (ev.type === 'release_saved') {
+      const status = this.snapshot.status;
+      const followed =
+        status !== undefined &&
+        ev.publisher !== status.id &&
+        status.follows.some(f => f.split(' ')[0] === ev.publisher);
+      if (followed) {
+        const key = `${ev.publisher}/${ev.name}:${ev.tag}`;
+        if (!this.notified.has(key)) {
+          this.notified.add(key);
+          this.deps.onFollowedRelease?.(ev.publisher, ev.name, ev.tag);
+        }
+      }
+    }
     this.snapshot = {
       ...this.snapshot,
       events: this.ring.snapshot(),

@@ -36,8 +36,10 @@ assert.equal(status.releases, 0);
 console.log('ok  status', status.did);
 
 assert.deepEqual(await client.releases(), []);
-assert.deepEqual(await client.peers(), []);
-console.log('ok  empty releases/peers');
+// Peers may legitimately be non-empty: the throwaway daemon still
+// discovers other ocid nodes on the LAN via mDNS.
+assert.ok(Array.isArray(await client.peers()));
+console.log('ok  empty releases; peers list has a valid shape');
 
 // --- policy endpoints --------------------------------------------------------
 
