@@ -9,7 +9,7 @@
 #   just fmt          cargo fmt
 #   just fmt-check    cargo fmt --check (pre-commit)
 #   just clippy       cargo clippy, warnings are errors
-#   just run ARGS     run the ocid daemon inside the builder (state under ./.dev/ocid-home)
+#   just run ARGS     run the ocid daemon on the host network (state: ./.dev/ocid-home; OCID_HOME= for more nodes)
 #   just ctl ARGS     run ocictl inside the builder against the same state
 #   just shell        interactive shell in the build container
 #   just bin          copy the debug binaries to ./bin/{ocid,ocictl}
@@ -37,18 +37,34 @@ set lazy
 
 podman_bin := require(env("PODMAN", "podman"))
 podman := podman_bin
-# Builder image pinned by digest for reproducible builds (override via RUST_IMAGE env).
-rust_image := env("RUST_IMAGE", "docker.io/library/rust:1.98.1-slim-bookworm@sha256:ebd900bae66fd508b466cef82d64a83a5fb34682e4c8b2797a42908bddc95a57")
+# Builder images pinned by digest for reproducible builds (override via
+# RUST_IMAGE / NODE_IMAGE env). Wolfi-based (Chainguard); the rust image
+# ships the same rustc 1.98.1 as the previous Debian pin. NOTE: switching
+# the rust image invalidates the target cache (std metadata differs per
+# vendor build) — remove the ocid-target volume after a toolchain change.
+rust_image := env("RUST_IMAGE", "cgr.dev/chainguard/rust@sha256:635c2f1ae6306ebcbeda3857013f065be7e1ed5dff0f8aff7a6a7a1bce459cac")
 image := env("IMAGE", "localhost/ocid:dev")
 project := "ocid"
 vol_registry := project + "-cargo-registry"
 vol_target := project + "-target"
+# Chainguard images run as a non-root uid by default; map the invoking user
+# in (portable across rootless and rootful podman with --userns=keep-id).
+host_uid := `id -u`
+host_gid := `id -g`
 
-# Common `podman run` invocation for the build container.
-_builder := podman + " run --rm" + " --userns=keep-id" + " -e CARGO_HOME=/usr/local/cargo" + " -e CARGO_TARGET_DIR=/target" + " -e CARGO_TERM_COLOR=always" + " -e RUST_BACKTRACE=1" + " -v " + justfile_directory() + ":/src:Z" + " -v " + vol_registry + ":/usr/local/cargo/registry" + " -v " + vol_target + ":/target" + " -w /src"
+# Common `podman run` invocation for the build container. `--entrypoint ""`
+# clears the image's rustc entrypoint so the recipe's command runs directly;
+# CARGO_HOME lives under /tmp (always writable) with the registry cache in
+# the named volume, and HOME=/tmp keeps rustup from dropping a .rustup into
+# the bind-mounted source tree.
+_builder := podman + " run --rm" + " --userns=keep-id" + " --user " + host_uid + ":" + host_gid + ' --entrypoint ""' + " -e HOME=/tmp" + " -e CARGO_HOME=/tmp/cargo" + " -e CARGO_TARGET_DIR=/target" + " -e CARGO_TERM_COLOR=always" + " -e RUST_BACKTRACE=1" + " -v " + justfile_directory() + ":/src:Z" + " -v " + vol_registry + ":/tmp/cargo/registry" + " -v " + vol_target + ":/target" + " -w /src"
 
 builder := _builder + " " + rust_image
 builder_tty := _builder + " -it " + rust_image
+# Builder variant on the host network, for running the daemon/CLI: a
+# `just run` daemon then binds the host's 127.0.0.1:5050 (reachable from
+# the Podman Desktop extension and podman) and mDNS discovery works.
+builder_net_tty := _builder + " --network=host -it " + rust_image
 
 _default:
     @just --list --unsorted
@@ -107,16 +123,35 @@ clippy: volumes
     {{ builder }} sh -c 'rustup component add clippy >/dev/null 2>&1; cargo clippy --all-targets -- -D warnings'
 
 # Run the ocid daemon inside the builder container (state under ./.dev/ocid-home).
+# Host networking: the registry/control API binds the host's 127.0.0.1:5050,
+# where the Podman Desktop extension, podman and `ocictl` expect it; mDNS
+# LAN discovery also works. Daemon flags pass straight through, e.g.
+# `just run --no-relay` or `just run --listen 127.0.0.1:15061`.
+# Set OCID_HOME (relative to the repo root) for additional local nodes —
+# the two-node demo from the README:
+#   OCID_HOME=.dev/node-b just run --listen 127.0.0.1:15061 --peer <ticket>
+# Notes: the daemon persists a --listen override into that home's config.toml
+# (rm -rf the home to reset), and if the host's 5050 is already taken (e.g. by
+# an installed ocid service) stop it or pass --listen — the bind will fail.
 [group('dev')]
 run *ARGS: volumes
-    @mkdir -p .dev/ocid-home
-    {{ builder_tty }} sh -c 'cargo build -q && OCID_HOME=/src/.dev/ocid-home /target/debug/ocid {{ ARGS }}'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    home="${OCID_HOME:-.dev/ocid-home}"
+    case "$home" in /*) echo "error: OCID_HOME must be relative to the repo root" >&2; exit 1;; esac
+    mkdir -p "$home"
+    {{ builder_net_tty }} sh -c 'cargo build -q && OCID_HOME="/src/'"$home"'" /target/debug/ocid {{ ARGS }}'
 
-# Run ocictl inside the builder container against ./.dev/ocid-home.
+# Run ocictl inside the builder container against a `just run` daemon
+# (same home; override with OCID_HOME= as for `just run`).
 [group('dev')]
 ctl *ARGS: volumes
-    @mkdir -p .dev/ocid-home
-    {{ builder_tty }} sh -c 'cargo build -q -p ocictl && OCID_HOME=/src/.dev/ocid-home /target/debug/ocictl {{ ARGS }}'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    home="${OCID_HOME:-.dev/ocid-home}"
+    case "$home" in /*) echo "error: OCID_HOME must be relative to the repo root" >&2; exit 1;; esac
+    mkdir -p "$home"
+    {{ builder_net_tty }} sh -c 'cargo build -q -p ocictl && OCID_HOME="/src/'"$home"'" /target/debug/ocictl {{ ARGS }}'
 
 # Interactive shell in the build container.
 [group('dev')]
@@ -127,7 +162,7 @@ shell: volumes
 [group('dev')]
 bin: build
     @mkdir -p bin
-    {{ podman }} run --rm --userns=keep-id \
+    {{ podman }} run --rm --userns=keep-id --user {{ host_uid }}:{{ host_gid }} --entrypoint "" \
         -v {{ vol_target }}:/target \
         -v {{ justfile_directory() }}/bin:/out:Z \
         {{ rust_image }} sh -c 'for b in ocid ocictl ocitop; do cp /target/debug/$b /out/.$b.new && mv -f /out/.$b.new /out/$b; done'
