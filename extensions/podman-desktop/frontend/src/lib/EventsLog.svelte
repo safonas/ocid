@@ -1,10 +1,12 @@
 <script lang="ts">
   import { Dropdown } from '@podman-desktop/ui-svelte';
-  import type { DaemonEvent } from '../../../src/types';
+  import { clock, fmtBytes, publisherColor } from './format';
+  import type { TimedEvent } from '../../../src/types';
 
-  let { events }: { events: DaemonEvent[] } = $props();
+  let { events }: { events: TimedEvent[] } = $props();
 
   let filter = $state('all');
+  let logEl: HTMLElement | undefined;
 
   const options = [
     { value: 'all', label: 'all' },
@@ -21,7 +23,15 @@
     (filter === 'all' ? [...events] : events.filter(e => e.type === filter)).reverse(),
   );
 
-  function describe(e: DaemonEvent): string {
+  // Follow the newest line unless the user has scrolled away from the bottom.
+  $effect(() => {
+    shown.length;
+    if (logEl && logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 80) {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  });
+
+  function describe(e: TimedEvent): string {
     switch (e.type) {
       case 'gossip':
         return `${e.outbound ? 'announced' : 'received gossip for'} ${e.name}:${e.tag} (${e.publisher.slice(0, 12)}…)`;
@@ -40,7 +50,7 @@
     }
   }
 
-  function cls(e: DaemonEvent): string {
+  function cls(e: TimedEvent): string {
     switch (e.type) {
       case 'gossip':
         return 'gossip';
@@ -59,11 +69,23 @@
     }
   }
 
-  function fmtBytes(n: number): string {
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KiB`;
-    if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MiB`;
-    return `${(n / 1024 ** 3).toFixed(1)} GiB`;
+  function icon(e: TimedEvent): string {
+    switch (e.type) {
+      case 'gossip':
+        return e.outbound ? '→' : '←';
+      case 'release_saved':
+        return '✓';
+      case 'pull_progress':
+        return '↓';
+      case 'fetch_failed':
+        return '✕';
+      case 'pruned':
+        return '✂';
+      case 'peer_change':
+        return e.connected ? '⇄' : '⇥';
+      case 'http_request':
+        return '·';
+    }
   }
 </script>
 
@@ -71,11 +93,15 @@
   <Dropdown ariaLabel="Filter events" bind:value={filter} {options} />
 </div>
 
-<div class="log">
+<div class="log" bind:this={logEl}>
   {#each shown as e, i (shown.length - i)}
     <div class="line {cls(e)}">
-      <span class="tag">{e.type}</span>
-      <span>{describe(e)}</span>
+      <span class="time mono">{clock(e.receivedAt)}</span>
+      <span class="tag">{icon(e)} {e.type}</span>
+      {#if 'publisher' in e}
+        <span class="pdot" style="background: {publisherColor(e.publisher)}" title={e.publisher}></span>
+      {/if}
+      <span class="msg">{describe(e)}</span>
     </div>
   {/each}
   {#if shown.length === 0}

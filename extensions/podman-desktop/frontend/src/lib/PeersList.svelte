@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from '@podman-desktop/ui-svelte';
   import { sendAction } from '../api';
+  import { publisherColor } from './format';
   import type { PeerInfo } from '../../../src/types';
 
   let { peers }: { peers: PeerInfo[] } = $props();
@@ -47,7 +48,9 @@
     <tbody>
       {#each peers as p (p.id)}
         <tr>
-          <td class="mono" title={p.id}>{p.id.slice(0, 24)}…</td>
+          <td class="mono" title={p.id}>
+            <span class="pdot" style="background: {publisherColor(p.id)}"></span>{p.id.slice(0, 24)}…
+          </td>
           <td>
             {#if p.neighbor}<span class="badge ok">connected</span>{/if}
           </td>

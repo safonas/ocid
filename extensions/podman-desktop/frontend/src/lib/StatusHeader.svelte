@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { publisherColor } from './format';
   import type { Status } from '../../../src/types';
 
   let { status }: { status?: Status } = $props();
@@ -15,7 +16,9 @@
   <div class="cards">
     <div class="card">
       <div class="label">Publisher</div>
-      <div class="value mono" title={status.did}>{status.did.replace('did:key:', '').slice(0, 24)}…</div>
+      <div class="value mono" title={status.did}>
+        <span class="pdot" style="background: {publisherColor(status.id)}"></span>{status.did.replace('did:key:', '').slice(0, 24)}…
+      </div>
     </div>
     <div class="card">
       <div class="label">Peers</div>

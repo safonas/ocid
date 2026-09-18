@@ -4,11 +4,12 @@
   import type { StateSnapshot } from '../../src/types';
   import StatusHeader from './lib/StatusHeader.svelte';
   import TicketCard from './lib/TicketCard.svelte';
+  import Transfers from './lib/Transfers.svelte';
   import ReleasesTable from './lib/ReleasesTable.svelte';
   import PeersList from './lib/PeersList.svelte';
   import EventsLog from './lib/EventsLog.svelte';
 
-  let snap: StateSnapshot = $state({ daemon: false, events: [] });
+  let snap: StateSnapshot = $state({ daemon: false, events: [], transfers: [] });
   onState(s => {
     snap = s;
   });
@@ -59,6 +60,10 @@
       <Button type="tab" selected={tab === t.id} onclick={() => (tab = t.id)}>{t.label}</Button>
     {/each}
   </nav>
+
+  {#if snap.transfers.length}
+    <Transfers transfers={snap.transfers} />
+  {/if}
 
   {#if tab === 'overview'}
     <StatusHeader status={snap.status} />

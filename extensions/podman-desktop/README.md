@@ -7,6 +7,11 @@ and the policy actions (`seed` / `follow` / `pin`, sync, GC, remove) — the sam
 capability maps 1:1 to a daemon endpoint and the daemon stays the single policy
 writer.
 
+Live transfers appear as a progress strip (byte-accurate bars with throughput)
+whenever the daemon fetches an image from peers — your own pulls *and*
+background replication of followed publishers. Publishers get a stable color
+across the releases table, peers list, and event stream.
+
 ## Status
 
 Phase 1 (dashboard). Phase 2 (daemon lifecycle, insecure-registry
@@ -34,6 +39,7 @@ registration, ticket bootstrap) is tracked in
 just ext-install   # npm install (runs in a pinned wolfi node container)
 just ext-build     # build backend (dist/) + frontend (media/)
 just ext-check     # tsc + svelte-check
+just ext-test      # unit tests for extension internals (no daemon)
 just ext-smoke     # run the extension client against a throwaway daemon
 just ext-image     # build the OCI artifact (for the catalog)
 ```
@@ -84,7 +90,7 @@ Notes:
 ## Layout
 
 - `src/` — extension backend: typed `/_ocid` client, 2s poller, SSE watcher
-  with a ring buffer, action dispatcher, webview wiring.
+  with a ring buffer, transfer tracker, action dispatcher, webview wiring.
 - `frontend/` — Svelte 5 webview (built into `media/`): status header,
-  releases table, peers, events log, ticket + QR.
+  transfers strip, releases table, peers, events log, ticket + QR.
 - `Containerfile` — scratch OCI artifact for catalog distribution.

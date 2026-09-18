@@ -264,29 +264,123 @@ td.actions :global(button) {
 
 .log .tag {
   color: var(--ocid-fg-dim);
-  min-width: 110px;
+  min-width: 130px;
+  white-space: nowrap;
 }
 
-.log .gossip span:nth-child(2) {
+.log .time {
+  color: var(--ocid-fg-dim);
+  min-width: 64px;
+  font-size: 11px;
+}
+
+.log .gossip .msg {
   color: var(--ocid-link);
 }
 
-.log .saved span:nth-child(2) {
+.log .saved .msg {
   color: var(--ocid-ok);
 }
 
-.log .pull span:nth-child(2) {
+.log .pull .msg {
   color: var(--ocid-link);
 }
 
-.log .pruned span:nth-child(2) {
+.log .pruned .msg {
   color: var(--ocid-warn);
 }
 
-.log .peer span:nth-child(2) {
+.log .peer .msg {
   color: var(--ocid-ok);
 }
 
-.log .http span:nth-child(2) {
+.log .http .msg {
   color: var(--ocid-fg-dim);
+}
+
+/* publisher identity dots — color derived from the publisher key */
+.pdot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* live transfers strip */
+.transfers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.transfer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--ocid-border);
+  border-radius: 6px;
+  background: var(--ocid-card);
+}
+
+.tref {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tfrom {
+  color: var(--ocid-fg-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tbar {
+  flex: 1;
+  min-width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ocid-border);
+  overflow: hidden;
+}
+
+.tfill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ocid-link);
+  transition: width 400ms ease;
+}
+
+.transfer.done .tfill {
+  background: var(--ocid-ok);
+}
+
+.transfer.failed .tfill {
+  background: var(--ocid-err);
+}
+
+.tmeta {
+  color: var(--ocid-fg-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tspeed {
+  color: var(--ocid-link);
+  font-family: var(--ocid-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tok {
+  color: var(--ocid-ok);
+}
+
+.terr {
+  color: var(--ocid-err);
+  cursor: help;
 }

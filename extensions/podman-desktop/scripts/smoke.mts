@@ -42,7 +42,7 @@ console.log('ok  empty releases/peers');
 // --- policy endpoints --------------------------------------------------------
 
 const ring = new EventRing();
-const sse = new SseWatcher(BASE, ring, () => {});
+const sse = new SseWatcher(BASE, ring, () => {}, () => {});
 sse.start();
 
 let r = await client.follow(stranger, 'latest');

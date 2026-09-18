@@ -2,22 +2,27 @@
 // `data:` lines), keeping a bounded ring buffer. Polling — not SSE — is the
 // primary data path, so failures here only mean "no live view".
 
-import type { DaemonEvent } from './types';
+import type { DaemonEvent, TimedEvent } from './types';
 
 const MAX_EVENTS = 200;
 const RECONNECT_DELAY_MS = 5_000;
 
 export class EventRing {
-  private buf: DaemonEvent[] = [];
+  private buf: TimedEvent[] = [];
 
   push(...events: DaemonEvent[]): void {
-    this.buf.push(...events);
+    const receivedAt = Date.now();
+    for (const ev of events) {
+      // The daemon does not timestamp events; stamp on receipt so the
+      // webview can render a time gutter.
+      this.buf.push({ ...ev, receivedAt } as TimedEvent);
+    }
     if (this.buf.length > MAX_EVENTS) {
       this.buf = this.buf.slice(-MAX_EVENTS);
     }
   }
 
-  snapshot(): DaemonEvent[] {
+  snapshot(): TimedEvent[] {
     return [...this.buf];
   }
 
@@ -31,15 +36,18 @@ export class SseWatcher {
   private readonly base: string;
   private readonly ring: EventRing;
   private readonly onChange: () => void;
+  private readonly onEvent: (event: DaemonEvent) => void;
 
   constructor(
     base: string,
     ring: EventRing,
     onChange: () => void,
+    onEvent: (event: DaemonEvent) => void,
   ) {
     this.base = base;
     this.ring = ring;
     this.onChange = onChange;
+    this.onEvent = onEvent;
   }
 
   start(): void {
@@ -105,6 +113,7 @@ export class SseWatcher {
     }
     if (typeof event !== 'object' || event === null || !('type' in event)) return;
     this.ring.push(event);
+    this.onEvent(event);
     this.onChange();
   }
 }

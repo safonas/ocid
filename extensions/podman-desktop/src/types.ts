@@ -72,6 +72,32 @@ export type Mode = 'full' | 'latest' | `last:${number}`;
 
 // --- extension <-> webview protocol -----------------------------------------
 
+/** Extension-internal (not a daemon DTO): a live transfer the backend tracks
+ *  from pull_progress / release_saved / fetch_failed events. */
+export interface TransferState {
+  /** "<publisher>/<name>:<tag>" */
+  key: string;
+  publisher: string;
+  name: string;
+  tag: string;
+  state: 'active' | 'done' | 'failed';
+  blobsDone: number;
+  blobsTotal: number;
+  bytesDone: number;
+  bytesTotal: number;
+  /** EWMA over per-event byte deltas; 0 until measurable. */
+  bytesPerSec: number;
+  error?: string;
+  /** epoch ms of the last progress update (stale pruning). */
+  updatedAt: number;
+  /** epoch ms when the transfer reached done/failed (auto-drop). */
+  finishedAt?: number;
+}
+
+/** Extension-internal: a daemon event stamped by the backend with its
+ *  arrival time (the daemon does not timestamp its events). */
+export type TimedEvent = DaemonEvent & { receivedAt: number };
+
 export type Action =
   | { kind: 'connect'; ticket: string }
   | { kind: 'pull'; reference: string }
@@ -103,7 +129,9 @@ export interface StateSnapshot {
   releases?: ReleaseInfo[];
   peers?: PeerInfo[];
   /** Ring buffer of the most recent daemon events, oldest first. */
-  events: DaemonEvent[];
+  events: TimedEvent[];
+  /** Live transfers, newest update first (extension-internal). */
+  transfers: TransferState[];
   /** Human-readable failure of the last action, if any. */
   error?: string;
 }

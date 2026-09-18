@@ -1,18 +1,14 @@
 <script lang="ts">
   import { Button, Input } from '@podman-desktop/ui-svelte';
   import { sendAction } from '../api';
+  import { fmtBytes, publisherColor, shortId } from './format';
+  import TimeAgo from './TimeAgo.svelte';
   import type { ReleaseInfo, Status } from '../../../src/types';
 
   let { releases, status }: { releases: ReleaseInfo[]; status?: Status } = $props();
 
   let pullRef = $state('');
-
-  function fmtBytes(n: number): string {
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KiB`;
-    if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MiB`;
-    return `${(n / 1024 ** 3).toFixed(1)} GiB`;
-  }
+  let copiedRun = $state('');
 
   // Coarse display-only classification from the Status rule strings (the
   // daemon stays the single policy enforcer; this never decides retention).
@@ -40,6 +36,17 @@
 
   function ref(r: ReleaseInfo, tagged = true): string {
     return tagged ? `${r.publisher}/${r.name}:${r.tag}` : `${r.publisher}/${r.name}`;
+  }
+
+  function runCmd(r: ReleaseInfo): string {
+    const reg = status?.registry ?? '127.0.0.1:5050';
+    return `podman run ${reg}/${r.publisher}/${r.name}:${r.tag}`;
+  }
+
+  async function copyRun(r: ReleaseInfo): Promise<void> {
+    await navigator.clipboard.writeText(runCmd(r));
+    copiedRun = `${r.publisher}/${r.name}:${r.tag}`;
+    setTimeout(() => (copiedRun = ''), 1500);
   }
 
   function pull(): void {
@@ -71,9 +78,9 @@
         <th>Publisher</th>
         <th>Image</th>
         <th>Tag</th>
+        <th>Updated</th>
         <th>Digest</th>
         <th>Size</th>
-        <th>Blobs</th>
         <th>State</th>
         <th>Kept by</th>
         <th></th>
@@ -82,12 +89,16 @@
     <tbody>
       {#each releases as r (r.publisher + r.name + r.tag)}
         <tr>
-          <td class="mono" title={r.publisher}>{r.mine ? '(me)' : `${r.publisher.slice(0, 12)}…`}</td>
+          <td class="mono" title={r.publisher}>
+            <span class="pdot" style="background: {publisherColor(r.publisher)}"></span>{r.mine
+              ? '(me)'
+              : shortId(r.publisher)}
+          </td>
           <td>{r.name}</td>
           <td class="mono">{r.tag}</td>
+          <td><TimeAgo ts={r.timestamp} /></td>
           <td class="mono" title={r.manifest_digest}>{r.manifest_digest.replace('sha256:', '').slice(0, 12)}…</td>
-          <td>{fmtBytes(r.size)}</td>
-          <td>{r.blobs}</td>
+          <td title="{r.blobs} blob(s)">{fmtBytes(r.size)}</td>
           <td>
             <span class="badge" class:ok={r.complete} class:warn={!r.complete}>
               {r.complete ? 'complete' : 'partial'}
@@ -97,6 +108,14 @@
             <span class="badge" class:ok={keptBy(r) !== 'cache'}>{keptBy(r)}</span>
           </td>
           <td class="actions">
+            <Button
+              type="secondary"
+              padding="px-2 py-0.5"
+              title="Copy a ready-to-paste podman run command"
+              onclick={() => void copyRun(r)}
+            >
+              {copiedRun === `${r.publisher}/${r.name}:${r.tag}` ? 'Copied!' : 'Run cmd'}
+            </Button>
             {#if !r.mine}
               {#if isSeeded(r)}
                 <Button type="secondary" padding="px-2 py-0.5" onclick={() => sendAction({ kind: 'unseed', reference: ref(r, false) })}>
