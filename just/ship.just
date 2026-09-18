@@ -14,8 +14,8 @@ set minimum-version := "1.47.0"
 # Phase 1 of a release: validate CI, bump the version, push a release
 # branch and open a PR. STOPS there: merge the PR manually, then run
 # `just publish-release VER` to tag and publish.
-[no-cd]
 [confirm("Cut release branch + PR? This runs full CI, commits the version bump and pushes.")]
+[no-cd]
 cut-release VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -45,8 +45,8 @@ cut-release VERSION:
 # publishes it as its last step (releases are immutable once published,
 # so the draft phase is required). Run AFTER the cut-release PR has been
 # merged (switches to an updated main itself).
-[no-cd]
 [confirm("Publish the release? This tags, pushes the tag, creates a GitHub release and updates the tap.")]
+[no-cd]
 publish-release VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -125,8 +125,8 @@ publish-release VERSION:
 # workflow against the existing draft release. Drafts stay mutable under
 # immutable releases, so partial uploads are simply clobbered. Builds run
 # from the tag, so main having moved on is fine.
-[no-cd]
 [confirm("Re-dispatch the release build?")]
+[no-cd]
 republish VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
