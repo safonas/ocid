@@ -2,6 +2,38 @@
 
 > **Priority 01 · Tier 1 — adoption:** the distribution channel; GUI onboarding for the podman audience; lowest risk (API + SSE already exist). Tracked in [#15](https://github.com/safonas/ocid/issues/15).
 
+## Status
+
+**Phase 1 (dashboard) shipped** — #24 (policy mutation endpoints), #25
+(wolfi toolchain), #26 (the extension). What exists in
+`extensions/podman-desktop`:
+
+- backend owns all network I/O: typed `/_ocid` client, 2s poller (ocitop
+  model), SSE watcher with ring buffer; the webview is a pure view
+- releases table with seed/unseed/pin/unpin/follow/remove via the
+  `/_ocid/policy/*` endpoints, peers + ticket connect, live events log,
+  ticket copy + QR
+- `@podman-desktop/ui-svelte` + Tailwind + `--pd-*` theme variables
+  (current Podman Desktop conventions); `src/types.ts` mirrors
+  `ocid-core`'s API DTOs
+- scratch OCI artifact for the catalog; `just ext-*` recipes
+  (node toolchain containerized like cargo)
+
+## Remaining (Phase 2)
+
+- **Registry registration** (researched, see #15 comment): PD's settings
+  dialog is an `auth.json` login flow (https + credentials) and cannot add
+  an anonymous http registry — the extension must write a `registries.conf`
+  drop-in itself: `~/.config/containers/registries.conf.d/` on Linux
+  (rootless), `podman machine ssh` + `host.containers.internal:5050` on
+  macOS. `registry.suggestRegistry()` rejected (funnels into the login
+  dialog). Est. 2–3h Linux (verifiable: push works without
+  `--tls-verify=false`), +1–2h macOS (needs a real machine to test).
+- **Daemon delivery**: bundle per-platform `ocid` binaries in the extension
+  artifact (decided; no native Windows daemon — WSL follow-up).
+- **Daemon lifecycle**: detect/start/supervise the bundled daemon.
+- Demo GIF of the two-node flow drivable from the GUI, for the README.
+
 ## Context
 Podman Desktop is the most direct adoption channel for the developer-collaboration
 use case: a teammate pushes `localhost:5050/app:dev` and peers pull it over
@@ -11,19 +43,11 @@ inside the GUI users already have, at exactly the moment they are setting up
 `podman` machines and registries.
 
 ## Proposal
-- Publish a Podman Desktop extension (TypeScript, `podman-desktop` extension API)
-  that bundles or manages the `ocid` daemon binary per platform (reuse the
-  release assets / Homebrew formula).
-- UI surfaces backed by the existing `/_ocid/*` JSON API and SSE stream:
-  - daemon status, publisher id (`did:key`), connection ticket
-    (copy/paste bootstrap, QR code for LAN nodes)
-  - peers list + live SSE events (reusing the data `ocitop` renders)
-  - releases table (`ocictl ls`) with follow/seed/pin controls editing
-    `policy.toml` through the daemon
-- Registry onboarding: a one-click "add local P2P registry" entry pointing
-  podman at `127.0.0.1:5050`.
-- Keep scope thin: the extension is a dashboard + onboarding, not a second
-  implementation of the control plane.
+A dashboard + onboarding surface, not a second implementation of the control
+plane: every capability maps 1:1 to a `/_ocid` endpoint, the daemon stays the
+single policy writer. Architecture and rules are documented in
+`docs/DESIGN.md` ("Podman Desktop extension"); development and local-testing
+instructions in `extensions/podman-desktop/README.md`.
 
 ## Why this priority
 Lowest technical risk (HTTP API already exists; `ocitop` proves the event

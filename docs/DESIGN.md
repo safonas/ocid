@@ -28,6 +28,7 @@ flowchart LR
         podman["podman / docker / oras"]
         cli["ocictl"]
         tui["ocitop (TUI)"]
+        ext["Podman Desktop<br/>extension"]
         prom["Prometheus"]
         subgraph node["ocid (daemon)"]
             reg["OCI v2 registry<br/>127.0.0.1:5050/v2"]
@@ -47,6 +48,7 @@ flowchart LR
     podman -- "HTTP /v2" --> reg
     cli -- "HTTP /_ocid" --> ctl
     tui -- "HTTP /_ocid & SSE" --> ctl
+    ext -- "HTTP /_ocid & SSE (backend)" --> ctl
     cli -. "offline: reads index" .-> store
     prom --> met
     reg --> core
@@ -64,6 +66,8 @@ flowchart LR
 
 Crates: `ocid-core` (library: identity, config/policy, OCI types, release
 records, index, API DTOs, optional client) — `ocid` (daemon) — `ocictl` (CLI) — `ocitop` (TUI dashboard).
+The Podman Desktop extension lives in `extensions/podman-desktop`
+(`just ext-*` recipes; node toolchain also runs in a container).
 
 ## Identity and naming
 
@@ -331,6 +335,36 @@ neighbors/peers/releases) and iroh's endpoint and gossip metrics (`iroh_*`).
 `GET /_ocid/events` serves a Server-Sent Events (SSE) stream of `DaemonEvent`s
 (gossip announcements, releases saved, window prunes, peer connections, and HTTP
 requests) consumed in real time by `ocitop`.
+
+## Podman Desktop extension
+
+`extensions/podman-desktop` is a thin dashboard over the same control API —
+a third consumer next to `ocictl` and `ocitop`, not a second implementation
+of the control plane. Rules that keep it thin:
+
+* **The backend owns all network I/O.** The extension's main process runs
+  the typed `/_ocid` client, a 2s poller (same model as `ocitop`) and an SSE
+  watcher feeding a ring buffer; the webview is a pure view talking over
+  postMessage. (The daemon has no CORS headers, so the webview cannot fetch
+  anyway — and the UI never depends on the SSE stream.)
+* **Every action maps 1:1 to a `/_ocid` endpoint.** Policy actions go
+  through the policy mutation endpoints; the daemon stays the single policy
+  writer. `src/types.ts` mirrors `ocid-core`'s API DTOs — that mirror is the
+  contract to update when the control API changes.
+* UI: Svelte 5 webview built with `@podman-desktop/ui-svelte` and Tailwind,
+  colors via Podman Desktop's `--pd-*` theme variables. Status header,
+  releases table (seed/pin/follow/remove), peers + ticket connect, live
+  events, connection ticket copy + QR.
+* Distributed as a scratch OCI artifact (`Containerfile`, `/extension`
+  layout, `io.podman-desktop.api.version` label) for the Podman Desktop
+  catalog; local development loads the folder directly.
+* **Phase 2** (tracked in #15): bundling per-platform daemon binaries,
+  daemon lifecycle, and registering the local registry in podman. The
+  registry part cannot use PD's settings dialog (an `auth.json` login flow
+  that assumes https and credentials) — it means writing a
+  `registries.conf` drop-in (`[[registry]] insecure = true`) on the host
+  (Linux) or inside the podman machine with `host.containers.internal`
+  (macOS); see the research notes on #15.
 
 ## Trust boundaries
 

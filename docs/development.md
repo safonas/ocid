@@ -1,10 +1,10 @@
 # Development
 
 Everything builds inside podman; only `podman` and `just` are needed on the host.
-All `just` recipes run in a pinned builder container
-(`docker.io/library/rust:1.98.1-slim-bookworm@sha256:ebd900ba…`) with cached
-cargo registry/target volumes and proper `:Z` SELinux bind mounts — never run
-`cargo`/`rustc` directly on the host.
+All `just` recipes run in pinned builder containers (Wolfi-based Chainguard
+images, digest-pinned: rust for cargo, node for the Podman Desktop extension)
+with cached registry/target volumes and proper `:Z` SELinux bind mounts —
+never run `cargo`/`rustc` or `npm` directly on the host.
 
 ## Recipes
 
@@ -18,15 +18,20 @@ just clippy      # lints (warnings are errors, same as CI)
 just fmt         # rustfmt
 just fmt-check   # fail if sources are not formatted
 just bin         # debug build -> ./bin/{ocid,ocictl,ocitop}
-just run ARGS    # run the ocid daemon in the builder (state in ./.dev/ocid-home)
+just run ARGS    # run the ocid daemon on the host network (state in ./.dev/ocid-home; OCID_HOME= for more nodes)
 just ctl ARGS    # run ocictl in the builder against the same state
 just shell       # interactive shell in the build container
-just e2e         # build, then scripts/e2e.sh: two daemons on this host, driven by podman/curl/ocictl
+just e2e         # build, then run scripts/e2e.sh: two daemons on this host, driven by podman/curl/ocictl
 just ci          # fmt --check, clippy -D warnings, tests, e2e
 just image       # runtime image: podman build -> localhost/ocid:dev
 just pkg         # .deb + .rpm for the host arch into ./dist (via pinned nfpm)
 just brew        # verify Homebrew tap formula syntax (brew audit)
 just brew-local  # test-install working tree through a local private tap
+just ext-install # npm install for the Podman Desktop extension
+just ext-build   # build the extension (backend dist/ + webview media/)
+just ext-check   # typecheck the extension (tsc + svelte-check)
+just ext-smoke   # run the extension client against a throwaway daemon
+just ext-image   # build the extension OCI artifact (for the catalog)
 just publish-release VER # automate release: CI checks, bump, tag, GH release, tap update (via PR)
 just hooks       # install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 just clean       # remove target volume, ./bin, ./dist
