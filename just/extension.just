@@ -44,12 +44,13 @@ volumes:
 # mount the cache volume with `:Z` — that stamps it with one container's
 # private SELinux category and blocks every later container; unlabeled
 # mounts keep the volume shared (`container_file_t:s0`), like the cargo
-# registry volume.
-_node := podman + " run --rm --userns=keep-id --user " + host_uid + ":" + host_gid + ' --entrypoint ""' + " -e HOME=/tmp -v " + vol_npm + ":/tmp/.npm -v " + justfile_directory() + ":/src:Z -w /src/" + ext_dir + " " + node_image
+# registry volume. The source tree mounts with `:z` for the same reason:
+# a private label would block a concurrently running `just run` daemon.
+_node := podman + " run --rm --userns=keep-id --user " + host_uid + ":" + host_gid + ' --entrypoint ""' + " -e HOME=/tmp -v " + vol_npm + ":/tmp/.npm -v " + justfile_directory() + ":/src:z -w /src/" + ext_dir + " " + node_image
 
 # Same, but with host networking: for scripts that talk to a daemon on the
 # host's loopback (127.0.0.1).
-_node_net := podman + " run --rm --userns=keep-id --user " + host_uid + ":" + host_gid + ' --entrypoint ""' + " -e HOME=/tmp --network=host -v " + vol_npm + ":/tmp/.npm -v " + justfile_directory() + ":/src:Z -w /src/" + ext_dir + " " + node_image
+_node_net := podman + " run --rm --userns=keep-id --user " + host_uid + ":" + host_gid + ' --entrypoint ""' + " -e HOME=/tmp --network=host -v " + vol_npm + ":/tmp/.npm -v " + justfile_directory() + ":/src:z -w /src/" + ext_dir + " " + node_image
 
 # Install extension dependencies (creates package-lock.json). The npm
 # download cache lives in a named volume, so reinstalls (after `just
