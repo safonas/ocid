@@ -83,10 +83,9 @@ just publish-release <version> # sync main, tag the merge, tap update, draft rel
 
 `publish-release` switches to an updated `main` by itself (refusing on a
 dirty tree); `just sync` does the same standalone when you just want the
-latest `main`. Both tolerate squash-merged PRs: when the remote's squashed
-commit has the same tree as local `main`, they reset to the remote instead
-of failing the fast-forward. `cut-release` never touches local `main` — it
-cuts the release branch straight from the fetched `github/main` tip.
+latest `main`. `cut-release` never touches local `main` — it cuts the
+release branch straight from the fetched `github/main` tip, so local main
+only ever advances by fast-forwarding to `github/main`.
 
 `cut-release`:
 1. Verifies a clean tree and that the tag and branch don't exist yet.
@@ -98,8 +97,7 @@ cuts the release branch straight from the fetched `github/main` tip.
 `publish-release` (run on `main` after the PR merged):
 1. Checks out an updated `main` whose `Cargo.toml` is at `<version>`.
 2. Creates and pushes tag `v<version>` (also mirrored to Radicle; the Radicle
-   push warns instead of failing if the node is offline, and force-updates
-   rad/main when a squash merge left it with stale-but-equivalent history).
+   push warns instead of failing if the node is offline).
 3. Updates `Formula/ocid.rb` in `safonas/homebrew-tap`, audits with `brew audit`, and pushes the tap.
 4. Creates a **draft** GitHub release and dispatches the SLSA workflow
    (`.github/workflows/slsa.yml`), which builds binaries and `.deb`/`.rpm`

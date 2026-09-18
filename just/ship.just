@@ -16,7 +16,7 @@ set minimum-version := "1.47.0"
 # `just publish-release VER` to tag and publish.
 #
 # The branch is cut straight from the fetched github/main tip: local main
-# is never touched, so squash merges on origin cannot diverge it.
+# is never touched by the release flow.
 [confirm("Cut release branch + PR? This runs full CI, commits the version bump and pushes.")]
 [no-cd]
 cut-release VERSION:
@@ -58,25 +58,16 @@ publish-release VERSION:
     ver="${ver#v}"
     [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "error: invalid semantic version '{{ VERSION }}'" >&2; exit 1; }
     tag="v$ver"
-    scripts/sync-main.sh
+    git diff --quiet && git diff --cached --quiet || { echo "error: working tree has uncommitted changes" >&2; exit 1; }
+    git checkout -q main
+    git pull github main --ff-only
     grep -q "^version = \"$ver\"$" Cargo.toml || { echo "error: Cargo.toml is not at $ver; has the release PR merged?" >&2; exit 1; }
     git rev-parse "$tag" >/dev/null 2>&1 && { echo "error: tag '$tag' already exists locally" >&2; exit 1; } || true
     git ls-remote --tags github "refs/tags/$tag" | grep -q "$tag" && { echo "error: tag '$tag' already exists on remote" >&2; exit 1; } || true
     git tag -a "$tag" -m "Release $tag"
     git push github "$tag"
     if git remote get-url rad >/dev/null 2>&1; then
-        # Best-effort Radicle mirror. rad/main can hold stale pre-squash
-        # history; if its tree matches main, a force push is a lossless
-        # mirror update (same rule as scripts/sync-main.sh).
-        git push rad "$tag" || echo "warning: tag push to rad remote failed" >&2
-        if ! git push rad main; then
-            if git fetch -q rad main && git diff --quiet FETCH_HEAD main; then
-                echo "note: rad/main has stale history; force-pushing mirror"
-                git push --force rad main
-            else
-                echo "warning: rad/main has unique content; main not mirrored, reconcile manually" >&2
-            fi
-        fi
+        git push rad main "$tag" || echo "warning: push to rad remote failed" >&2
     else
         echo "warning: no rad remote configured, skipping Radicle mirror" >&2
     fi
