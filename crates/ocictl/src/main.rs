@@ -7,8 +7,8 @@ use clap::{Parser, Subcommand};
 use comfy_table::{presets::NOTHING, Table};
 use ocid_core::{
     api::{
-        AddPeerResp, AnnounceResp, GcReport, OkResp, PeerInfo, ReleaseInfo, RmResp, Status,
-        SyncResp,
+        AddPeerResp, AnnounceResp, GcReport, OkResp, PeerInfo, PolicyChangeResp, ReleaseInfo,
+        RmResp, Status, SyncResp,
     },
     client::Client,
     config::{Config, Mode, Policy},
@@ -230,110 +230,219 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
             Ok(())
         }
         Command::Seed { reference, mode } => {
-            let id = Identity::load(paths)?;
-            let mut policy = Policy::load(paths)?;
-            let r = ImageRef::parse(&reference, &policy, &id.id())?;
-            if r.publisher == id.id() {
-                bail!("{r} is published by this node; it is always seeded");
-            }
             let mode = mode.mode()?;
-            let changed = policy.add_seed(&r.to_string(), mode)?;
-            policy.save(paths)?;
-            let how = match &r.tag {
-                Some(_) => "this tag".to_string(),
-                None => format!("mode {mode}"),
-            };
-            println!(
-                "{} {r} ({how})",
-                if changed {
-                    "seeding"
-                } else {
-                    "already seeding"
+            if let Some(c) = live_client(paths).await {
+                let v: PolicyChangeResp = c
+                    .post(
+                        "/_ocid/policy/seed",
+                        &serde_json::json!({ "reference": reference, "mode": mode }),
+                    )
+                    .await?;
+                let how = tag_or_mode(&v.reference, mode);
+                println!(
+                    "{} {} ({how})",
+                    if v.changed {
+                        "seeding"
+                    } else {
+                        "already seeding"
+                    },
+                    v.reference
+                );
+                sync_all(&c).await;
+            } else {
+                let id = Identity::load(paths)?;
+                let mut policy = Policy::load(paths)?;
+                let r = ImageRef::parse(&reference, &policy, &id.id())?;
+                if r.publisher == id.id() {
+                    bail!("{r} is published by this node; it is always seeded");
                 }
-            );
-            reload_and_sync(paths).await;
+                let changed = policy.add_seed(&r.to_string(), mode)?;
+                policy.save(paths)?;
+                println!(
+                    "{} {r} ({})",
+                    if changed {
+                        "seeding"
+                    } else {
+                        "already seeding"
+                    },
+                    tag_or_mode(&r.to_string(), mode)
+                );
+                offline_note();
+            }
             Ok(())
         }
         Command::Unseed { reference } => {
-            let id = Identity::load(paths)?;
-            let mut policy = Policy::load(paths)?;
-            let r = ImageRef::parse(&reference, &policy, &id.id())?;
-            let removed = policy.remove_seed(&r.to_string())?;
-            policy.save(paths)?;
-            println!(
-                "{} {r}",
-                if removed {
-                    "no longer seeding"
-                } else {
-                    "was not seeding"
-                }
-            );
-            reload(paths).await;
+            if let Some(c) = live_client(paths).await {
+                let v: PolicyChangeResp = c
+                    .post(
+                        "/_ocid/policy/unseed",
+                        &serde_json::json!({ "reference": reference }),
+                    )
+                    .await?;
+                println!(
+                    "{} {}",
+                    if v.changed {
+                        "no longer seeding"
+                    } else {
+                        "was not seeding"
+                    },
+                    v.reference
+                );
+            } else {
+                let id = Identity::load(paths)?;
+                let mut policy = Policy::load(paths)?;
+                let r = ImageRef::parse(&reference, &policy, &id.id())?;
+                let removed = policy.remove_seed(&r.to_string())?;
+                policy.save(paths)?;
+                println!(
+                    "{} {r}",
+                    if removed {
+                        "no longer seeding"
+                    } else {
+                        "was not seeding"
+                    }
+                );
+                offline_note();
+            }
             Ok(())
         }
         Command::Follow { publisher, mode } => {
-            let p = parse_publisher(&publisher)?;
-            let mut policy = Policy::load(paths)?;
             let mode = mode.mode()?;
-            let changed = policy.add_follow(&p, mode);
-            policy.save(paths)?;
-            println!(
-                "{} {} ({}) mode {mode}",
-                if changed {
-                    "following"
-                } else {
-                    "already following"
-                },
-                p,
-                did_key(&p)
-            );
-            reload_and_sync(paths).await;
+            if let Some(c) = live_client(paths).await {
+                let v: PolicyChangeResp = c
+                    .post(
+                        "/_ocid/policy/follow",
+                        &serde_json::json!({ "publisher": publisher, "mode": mode }),
+                    )
+                    .await?;
+                let p = parse_publisher(&v.reference)?;
+                println!(
+                    "{} {p} ({}) mode {mode}",
+                    if v.changed {
+                        "following"
+                    } else {
+                        "already following"
+                    },
+                    did_key(&p)
+                );
+                sync_all(&c).await;
+            } else {
+                let p = parse_publisher(&publisher)?;
+                let mut policy = Policy::load(paths)?;
+                let changed = policy.add_follow(&p, mode);
+                policy.save(paths)?;
+                println!(
+                    "{} {p} ({}) mode {mode}",
+                    if changed {
+                        "following"
+                    } else {
+                        "already following"
+                    },
+                    did_key(&p)
+                );
+                offline_note();
+            }
             Ok(())
         }
         Command::Pin { reference } => {
-            let id = Identity::load(paths)?;
-            let mut policy = Policy::load(paths)?;
-            let r = ImageRef::parse(&reference, &policy, &id.id())?;
-            if r.tag.is_none() {
-                bail!("a pin needs a tag: {r}:<tag>");
+            if let Some(c) = live_client(paths).await {
+                let v: PolicyChangeResp = c
+                    .post(
+                        "/_ocid/policy/pin",
+                        &serde_json::json!({ "reference": reference }),
+                    )
+                    .await?;
+                println!(
+                    "{} {}",
+                    if v.changed {
+                        "pinned"
+                    } else {
+                        "already pinned"
+                    },
+                    v.reference
+                );
+                sync_all(&c).await;
+            } else {
+                let id = Identity::load(paths)?;
+                let mut policy = Policy::load(paths)?;
+                let r = ImageRef::parse(&reference, &policy, &id.id())?;
+                if r.tag.is_none() {
+                    bail!("a pin needs a tag: {r}:<tag>");
+                }
+                let added = policy.add_pin(&r.to_string())?;
+                policy.save(paths)?;
+                println!("{} {r}", if added { "pinned" } else { "already pinned" });
+                offline_note();
             }
-            let added = policy.add_pin(&r.to_string())?;
-            policy.save(paths)?;
-            println!("{} {r}", if added { "pinned" } else { "already pinned" });
-            reload_and_sync(paths).await;
             Ok(())
         }
         Command::Unpin { reference } => {
-            let id = Identity::load(paths)?;
-            let mut policy = Policy::load(paths)?;
-            let r = ImageRef::parse(&reference, &policy, &id.id())?;
-            let removed = policy.remove_pin(&r.to_string())?;
-            policy.save(paths)?;
-            println!(
-                "{} {r}",
-                if removed {
-                    "unpinned"
-                } else {
-                    "was not pinned"
-                }
-            );
-            reload(paths).await;
+            if let Some(c) = live_client(paths).await {
+                let v: PolicyChangeResp = c
+                    .post(
+                        "/_ocid/policy/unpin",
+                        &serde_json::json!({ "reference": reference }),
+                    )
+                    .await?;
+                println!(
+                    "{} {}",
+                    if v.changed {
+                        "unpinned"
+                    } else {
+                        "was not pinned"
+                    },
+                    v.reference
+                );
+            } else {
+                let id = Identity::load(paths)?;
+                let mut policy = Policy::load(paths)?;
+                let r = ImageRef::parse(&reference, &policy, &id.id())?;
+                let removed = policy.remove_pin(&r.to_string())?;
+                policy.save(paths)?;
+                println!(
+                    "{} {r}",
+                    if removed {
+                        "unpinned"
+                    } else {
+                        "was not pinned"
+                    }
+                );
+                offline_note();
+            }
             Ok(())
         }
         Command::Unfollow { publisher } => {
-            let p = parse_publisher(&publisher)?;
-            let mut policy = Policy::load(paths)?;
-            let removed = policy.remove_follow(&p);
-            policy.save(paths)?;
-            println!(
-                "{} {p}",
-                if removed {
-                    "unfollowed"
-                } else {
-                    "was not following"
-                }
-            );
-            reload(paths).await;
+            if let Some(c) = live_client(paths).await {
+                let v: PolicyChangeResp = c
+                    .post(
+                        "/_ocid/policy/unfollow",
+                        &serde_json::json!({ "publisher": publisher }),
+                    )
+                    .await?;
+                let p = parse_publisher(&v.reference)?;
+                println!(
+                    "{} {p}",
+                    if v.changed {
+                        "unfollowed"
+                    } else {
+                        "was not following"
+                    }
+                );
+            } else {
+                let p = parse_publisher(&publisher)?;
+                let mut policy = Policy::load(paths)?;
+                let removed = policy.remove_follow(&p);
+                policy.save(paths)?;
+                println!(
+                    "{} {p}",
+                    if removed {
+                        "unfollowed"
+                    } else {
+                        "was not following"
+                    }
+                );
+                offline_note();
+            }
             Ok(())
         }
         Command::Track { target, alias } => {
@@ -541,27 +650,45 @@ fn client(paths: &Paths) -> Result<Client> {
     Ok(Client::new(cfg.listen))
 }
 
+/// A client for a running daemon, or `None` when it is not reachable: policy
+/// commands then fall back to editing `policy.toml` locally.
+async fn live_client(paths: &Paths) -> Option<Client> {
+    let c = client(paths).ok()?;
+    c.is_running().await.then_some(c)
+}
+
+/// Pull content per the (just-changed) policy from all known peers.
+async fn sync_all(c: &Client) {
+    if let Ok(v) = c
+        .post::<SyncResp>("/_ocid/sync", &serde_json::json!({ "peer": null }))
+        .await
+    {
+        println!("synced with {} peer(s)", v.synced);
+        for f in v.failed {
+            println!("failed: {f}");
+        }
+    }
+}
+
+fn offline_note() {
+    println!("(daemon not running; will take effect when it starts)");
+}
+
+/// `"this tag"` for a tagged rule, `"mode <mode>"` otherwise: the canonical
+/// rule format only ever has a colon in front of the tag.
+fn tag_or_mode(reference: &str, mode: Mode) -> String {
+    if reference.contains(':') {
+        "this tag".to_string()
+    } else {
+        format!("mode {mode}")
+    }
+}
+
 /// Ask a running daemon to reload policy; silently ignore if not running.
 async fn reload(paths: &Paths) {
     if let Ok(c) = client(paths) {
         if c.is_running().await {
             let _: Result<OkResp> = c.post("/_ocid/policy/reload", &serde_json::json!({})).await;
-        }
-    }
-}
-
-async fn reload_and_sync(paths: &Paths) {
-    if let Ok(c) = client(paths) {
-        if c.is_running().await {
-            let _: Result<OkResp> = c.post("/_ocid/policy/reload", &serde_json::json!({})).await;
-            let r: Result<SyncResp> = c
-                .post("/_ocid/sync", &serde_json::json!({ "peer": null }))
-                .await;
-            if let Ok(v) = r {
-                println!("synced with {} peer(s)", v.synced);
-            }
-        } else {
-            println!("(daemon not running; will take effect when it starts)");
         }
     }
 }

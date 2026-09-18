@@ -23,8 +23,9 @@ use axum::{
 use n0_future::StreamExt;
 use ocid_core::{
     api::{
-        AddPeerReq, AddPeerResp, AnnounceReq, AnnounceResp, DaemonEvent, ErrorResp, GcReq, OkResp,
-        RefReq, ReleaseInfo, RmReq, RmResp, SyncReq, SyncResp,
+        AddPeerReq, AddPeerResp, AnnounceReq, AnnounceResp, DaemonEvent, ErrorResp, FollowReq,
+        GcReq, OkResp, PinReq, RefReq, ReleaseInfo, RmReq, RmResp, SeedReq, SyncReq, SyncResp,
+        UnfollowReq, UnpinReq, UnseedReq,
     },
     identity::PublisherId,
     oci::{self, Digest, ImageRef, Manifest},
@@ -73,6 +74,12 @@ pub async fn serve(node: Arc<Node>, listener: tokio::net::TcpListener) {
         .route("/_ocid/announce", post(ctl_announce))
         .route("/_ocid/sync", post(ctl_sync))
         .route("/_ocid/policy/reload", post(ctl_reload))
+        .route("/_ocid/policy/seed", post(ctl_seed))
+        .route("/_ocid/policy/unseed", post(ctl_unseed))
+        .route("/_ocid/policy/follow", post(ctl_follow))
+        .route("/_ocid/policy/unfollow", post(ctl_unfollow))
+        .route("/_ocid/policy/pin", post(ctl_pin))
+        .route("/_ocid/policy/unpin", post(ctl_unpin))
         .route("/_ocid/gc", post(ctl_gc))
         .route("/_ocid/rm", post(ctl_rm))
         .route("/_ocid/events", get(ctl_events))
@@ -1042,6 +1049,30 @@ async fn ctl_sync(State(app): State<App>, Json(req): Json<SyncReq>) -> Response 
 
 async fn ctl_gc(State(app): State<App>, Json(req): Json<GcReq>) -> Response {
     ctl_result(app.node.gc(req).await)
+}
+
+async fn ctl_seed(State(app): State<App>, Json(req): Json<SeedReq>) -> Response {
+    ctl_result(app.node.seed(&req.reference, req.mode).await)
+}
+
+async fn ctl_unseed(State(app): State<App>, Json(req): Json<UnseedReq>) -> Response {
+    ctl_result(app.node.unseed(&req.reference).await)
+}
+
+async fn ctl_follow(State(app): State<App>, Json(req): Json<FollowReq>) -> Response {
+    ctl_result(app.node.follow(&req.publisher, req.mode).await)
+}
+
+async fn ctl_unfollow(State(app): State<App>, Json(req): Json<UnfollowReq>) -> Response {
+    ctl_result(app.node.unfollow(&req.publisher).await)
+}
+
+async fn ctl_pin(State(app): State<App>, Json(req): Json<PinReq>) -> Response {
+    ctl_result(app.node.pin(&req.reference).await)
+}
+
+async fn ctl_unpin(State(app): State<App>, Json(req): Json<UnpinReq>) -> Response {
+    ctl_result(app.node.unpin(&req.reference).await)
 }
 
 async fn ctl_rm(State(app): State<App>, Json(req): Json<RmReq>) -> Response {
