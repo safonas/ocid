@@ -17,7 +17,7 @@
     "build": "npm run build:frontend && npm run build:backend",
     "build:backend": "vite build",
     "build:frontend": "cd frontend && vite build",
-    "typecheck": "tsc --noEmit && cd frontend && svelte-check --tsconfig tsconfig.json"
+    "typecheck": "tsc --noEmit && cd frontend && svelte-check --tsconfig tsconfig.json --tsgo"
   },
   "contributes": {
     "configuration": {
@@ -60,11 +60,12 @@
     "@tsconfig/svelte": "^5.0.4",
     "@types/node": "^22.19.0",
     "@types/qrcode": "^1.5.5",
+    "@typescript/native": "npm:typescript@~7.0.0",
     "qrcode": "^1.5.4",
     "svelte": "^5.57.0",
     "svelte-check": "^4.7.6",
     "tailwindcss": "^4.3.3",
-    "typescript": "~7.0.0",
+    "typescript": "~6.0.0",
     "vite": "^8.3.0"
   }
 }
