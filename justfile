@@ -17,7 +17,6 @@
 #   just ext-install  npm install for the Podman Desktop extension (wolfi node container)
 #   just ext-build    build the extension (backend dist/ + webview media/)
 #   just ext-check    typecheck the extension (tsc + svelte-check)
-#   just ext-watch    rebuild the extension on change (for local dev against just run)
 #   just ext-smoke    run the extension client against a throwaway daemon
 #   just ext-image    build the extension OCI artifact (for the catalog)
 #   just ci           fmt-check + clippy + test + e2e
@@ -221,9 +220,6 @@ ext-build: ext::build
 # Shim: `just ext check`.
 [group('extension')]
 ext-check: ext::check
-# Shim: `just ext watch` (rebuild on change while Podman Desktop reloads).
-[group('extension')]
-ext-watch: ext::watch
 # Shim: `just ext smoke` (debug binaries are built first via `just bin`).
 [group('extension')]
 ext-smoke: bin ext::smoke

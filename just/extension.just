@@ -55,12 +55,6 @@ _node_net := podman + " run --rm --userns=keep-id --user " + host_uid + ":" + ho
 install: volumes
     {{ _node }} npm install --no-fund --no-audit
 
-# Rebuild backend dist/ and webview media/ on every change (Podman Desktop
-# watches the extension folder and reloads). Two watchers: backend + webview.
-[no-cd]
-watch: volumes
-    {{ _node }} npm run watch
-
 # Build the extension: backend dist/ + webview media/.
 [no-cd]
 build:

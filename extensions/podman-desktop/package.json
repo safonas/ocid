@@ -17,9 +17,6 @@
     "build": "npm run build:frontend && npm run build:backend",
     "build:backend": "vite build",
     "build:frontend": "cd frontend && vite build",
-    "watch": "npm run watch:backend & npm run watch:frontend & wait",
-    "watch:backend": "vite --mode development build -w",
-    "watch:frontend": "cd frontend && vite --mode development build -w",
     "typecheck": "tsc --noEmit && cd frontend && svelte-check --tsconfig tsconfig.json"
   },
   "contributes": {

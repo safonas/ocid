@@ -55,9 +55,9 @@ with state under `./.dev/ocid-home`:
 3. In Podman Desktop: **Settings → Extensions → Add a local folder
    extension...** and select this directory (`extensions/podman-desktop`).
    Podman Desktop watches the folder and reloads when it changes.
-4. Iterate: keep `just ext-watch` running (rebuilds `dist/` + `media/` on
-   every change) and drive the daemon from a terminal with `just ctl ...`
-   (`ls`, `peers`, `status`, ...).
+4. Iterate: rerun `just ext-build` after your changes (Podman Desktop picks
+   the new `dist/` + `media/` up on reload), and drive the daemon from a
+   terminal with `just ctl ...` (`ls`, `peers`, `status`, ...).
 
 Notes:
 
