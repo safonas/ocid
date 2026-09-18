@@ -14,6 +14,7 @@ pub struct Client {
 
 impl Client {
     pub fn new(listen: SocketAddr) -> Self {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         Self {
             base: format!("http://{listen}"),
             http: reqwest::Client::builder()
