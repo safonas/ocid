@@ -37,7 +37,7 @@ clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-comfy-table = "7"
+comfy-table = "8"
 
 # data
 serde = { version = "1", features = ["derive"] }

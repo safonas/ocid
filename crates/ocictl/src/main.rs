@@ -695,7 +695,7 @@ async fn reload(paths: &Paths) {
 
 fn table<const N: usize>(headers: [&str; N]) -> Table {
     let mut t = Table::new();
-    t.load_preset(NOTHING);
+    t.load_style(NOTHING);
     t.set_header(headers);
     t
 }
