@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.27@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
 #
 # Multi-stage build for ocid.
 #
@@ -12,7 +12,9 @@
 ARG BUILDER_IMAGE=cgr.dev/chainguard/rust@sha256:7d70867ec51393a4e04db3a0c4d89d91c7eab1ee0fe4650107116de6d2bea096
 # Wolfi rolling base (re-pin regularly for fresh security fixes).
 ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:32d119bfa89c4302e0608f5c120b39c6b8f80b592c7fb46aa27008b2669ce220
-ARG SOURCE_DATE_EPOCH=[PHONE]
+# Reproducible layer timestamps: the release flow passes the tag commit time
+# via --build-arg; this default is the project initial commit epoch.
+ARG SOURCE_DATE_EPOCH=1789090756
 
 # ---------------------------------------------------------------------------
 # builder
@@ -23,7 +25,7 @@ FROM ${BUILDER_IMAGE} AS builder
 # write to /src (COPY'd as root).
 USER root
 
-ENV SOURCE_DATE_EPOCH=[PHONE]
+ENV SOURCE_DATE_EPOCH=1789090756
 ENV RUSTFLAGS="--remap-path-prefix=/src=/build"
 
 WORKDIR /src
