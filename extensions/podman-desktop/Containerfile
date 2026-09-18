@@ -7,7 +7,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Wolfi-based node builder, pinned by digest (override via --build-arg).
-ARG NODE_IMAGE=cgr.dev/chainguard/node@sha256:2a2df3a1f79cfe63317e3e6e2b7394cac434648fdfc82e4f702d0e6dc4d9a852
+ARG NODE_IMAGE=cgr.dev/chainguard/node@sha256:1f903d44fc11a6f6e74447fc2c6a3c141f112217576be5d96c283210116b5d25
 
 FROM ${NODE_IMAGE} AS builder
 
