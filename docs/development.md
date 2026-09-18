@@ -83,7 +83,9 @@ just publish-release <version> # sync main, tag the merge, tap update, draft rel
 
 Both recipes switch to an updated `main` by themselves (refusing on a
 dirty tree); `just sync` does the same standalone when you just want the
-latest `main`.
+latest `main`. The sync tolerates squash-merged PRs: when the remote's
+squashed commit has the same tree as local `main`, it resets to the remote
+instead of failing the fast-forward.
 
 `cut-release`:
 1. Verifies a clean tree on `main` in sync with `github/main`, and that the
