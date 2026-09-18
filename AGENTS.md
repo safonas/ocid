@@ -38,7 +38,7 @@ Do not use `/tmp` for scratch work; keep temporary files inside the workspace
 - `just hooks`: install git pre-commit and pre-push hooks
 - `just brew`: audit the Homebrew tap formula syntax
 - `just cut-release <version>`: validate CI, bump version, push release branch, open PR (merge manually)
-- `just publish-release <version>`: tag the merge, GitHub release, and Homebrew tap publication (after the PR merged)
+- `just publish-release <version>`: tag the merge, update the Homebrew tap, open a draft GitHub release that CI publishes with artifacts + provenance (after the PR merged)
 
 ### Git hooks
 

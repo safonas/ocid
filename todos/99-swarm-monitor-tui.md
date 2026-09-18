@@ -1,5 +1,7 @@
 # Live Swarm Monitor TUI (`ocitop`)
 
+> **Priority 99 · Done:** implemented in `crates/ocitop`; only the enhancements below remain. Sorted last so active work comes first.
+
 ## Status
 Implemented in `crates/ocitop` as a dedicated TUI binary (`ocitop`).
 Uses Ratatui and crossterm, polling the daemon control API and streaming real-time events over SSE (`/_ocid/events`).

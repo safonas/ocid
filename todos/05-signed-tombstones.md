@@ -1,5 +1,7 @@
 # Signed Tombstones (Cryptographic Revocation)
 
+> **Priority 05 · Tier 2 — trust gate:** "verified" should also mean "recallable"; completes the signed-record supply-chain story.
+
 ## Context
 Currently, deleting an image release or tag (`ocictl rm` or registry `DELETE`) is local to the node. A publisher has no cryptographic mechanism to deprecate, recall, or yank a compromised or broken release across peers in the swarm.
 
