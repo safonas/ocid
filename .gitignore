@@ -2,4 +2,5 @@
 /bin
 /dist
 /.dev
+/node_modules
 /.rustup

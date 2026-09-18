@@ -14,6 +14,12 @@
 #   just shell        interactive shell in the build container
 #   just bin          copy the debug binaries to ./bin/{ocid,ocictl}
 #   just e2e          build, then run scripts/e2e.sh (two nodes on this host; needs podman, curl, jq)
+#   just ext-install  npm install for the Podman Desktop extension (wolfi node container)
+#   just ext-build    build the extension (backend dist/ + webview media/)
+#   just ext-check    typecheck the extension (tsc + svelte-check)
+#   just ext-watch    rebuild the extension on change (for local dev against just run)
+#   just ext-smoke    run the extension client against a throwaway daemon
+#   just ext-image    build the extension OCI artifact (for the catalog)
 #   just ci           fmt-check + clippy + test + e2e
 #   just hooks        install git hooks via pre-commit (fmt/clippy/just-fmt on commit, tests on push)
 #   just image        build the runtime container image (Containerfile)
@@ -193,6 +199,9 @@ image: packaging::image
 [group('package')]
 mod packaging 'just/packaging.just'
 
+# Podman Desktop extension recipes live in the `ext` submodule.
+mod ext 'just/extension.just'
+
 # Shim: `just packaging pkg` (release binaries are built first via `release`).
 [group('package')]
 pkg: release packaging::pkg
@@ -202,6 +211,28 @@ brew: packaging::brew
 # Shim: `just packaging brew-local`.
 [group('package')]
 brew-local: packaging::brew-local
+
+# Shims for the extension module (`just ext build` also works).
+[group('extension')]
+ext-install: ext::install
+# Shim: `just ext build`.
+[group('extension')]
+ext-build: ext::build
+# Shim: `just ext check`.
+[group('extension')]
+ext-check: ext::check
+# Shim: `just ext watch` (rebuild on change while Podman Desktop reloads).
+[group('extension')]
+ext-watch: ext::watch
+# Shim: `just ext smoke` (debug binaries are built first via `just bin`).
+[group('extension')]
+ext-smoke: bin ext::smoke
+# Shim: `just ext image`.
+[group('extension')]
+ext-image: ext::image
+# Shim: `just ext clean`.
+[group('extension')]
+ext-clean: ext::clean
 
 # PR-based releases live in the `ship` submodule.
 [group('release')]

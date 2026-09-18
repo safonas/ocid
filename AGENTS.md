@@ -14,6 +14,7 @@ and signed release records.
 - `crates/ocid`: the daemon binary (`ocid`). Runs iroh endpoint, gossip, blob store, OCI registry + `/_ocid/*` control API + `/metrics` OpenMetrics.
 - `crates/ocictl`: the CLI binary (`ocictl`). Interacts with the daemon over HTTP, manages `policy.toml`, supports offline inspection (`ls`, `whoami`, `policy`).
 - `crates/ocitop`: the TUI monitor binary (`ocitop`). Interactive terminal dashboard for daemon status, releases, peers, and real-time SSE events.
+- `extensions/podman-desktop`: the Podman Desktop extension (TypeScript + Svelte). Dashboard over the same `/_ocid` API; build via `just ext-*` recipes (node runs in a container, like cargo).
 - `scripts/e2e.sh`: multi-node end-to-end integration test runner.
 - `docs/DESIGN.md`: architectural design, data models, sequences, and trust boundaries.
 

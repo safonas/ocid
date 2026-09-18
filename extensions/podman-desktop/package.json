@@ -1,0 +1,61 @@
+{
+  "name": "ocid",
+  "displayName": "ocid",
+  "description": "Peer-to-peer OCI image sharing: seed, follow and pull images from teammates over QUIC — no registry, no accounts.",
+  "version": "0.5.1",
+  "icon": "icon.png",
+  "publisher": "safonas",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "repository": "https://github.com/safonas/ocid",
+  "homepage": "https://github.com/safonas/ocid#readme",
+  "engines": {
+    "podman-desktop": ">=1.22.0"
+  },
+  "main": "./dist/extension.cjs",
+  "scripts": {
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:backend": "vite build",
+    "build:frontend": "cd frontend && vite build",
+    "watch": "npm run watch:backend & npm run watch:frontend & wait",
+    "watch:backend": "vite --mode development build -w",
+    "watch:frontend": "cd frontend && vite --mode development build -w",
+    "typecheck": "tsc --noEmit && cd frontend && svelte-check --tsconfig tsconfig.json"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "ocid",
+      "properties": {
+        "ocid.registryUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:5050",
+          "description": "Base URL of the ocid daemon's registry and control API."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "ocid.openDashboard",
+        "title": "ocid: Open dashboard"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@fortawesome/fontawesome-free": "^7.3.1",
+    "@fortawesome/free-solid-svg-icons": "^7.3.1",
+    "@podman-desktop/api": "^1.29.1",
+    "@podman-desktop/ui-svelte": "^1.29.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tsconfig/node22": "^22.0.2",
+    "@tsconfig/svelte": "^5.0.4",
+    "@types/node": "^22.19.0",
+    "@types/qrcode": "^1.5.5",
+    "qrcode": "^1.5.4",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.7.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.0"
+  }
+}

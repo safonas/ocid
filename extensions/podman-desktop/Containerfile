@@ -1,0 +1,46 @@
+# Podman Desktop extension artifact: a scratch OCI image holding the
+# assembled extension (backend dist/ + webview media/ + metadata), per the
+# publishing guide (https://podman-desktop.io/docs/extensions/publish).
+# Build with `just ext image`; push to a registry and register it in the
+# podman-desktop-catalog to distribute.
+#
+# syntax=docker/dockerfile:1.7
+
+# Wolfi-based node builder, pinned by digest (override via --build-arg).
+ARG NODE_IMAGE=cgr.dev/chainguard/node@sha256:2a2df3a1f79cfe63317e3e6e2b7394cac434648fdfc82e4f702d0e6dc4d9a852
+
+FROM ${NODE_IMAGE} AS builder
+
+# Chainguard images run as a non-root uid by default; npm needs to write
+# to /app (COPY'd as root).
+USER root
+ENV HOME=/tmp
+WORKDIR /app
+
+# Install dependencies in their own layer: it is only rebuilt when the
+# manifests change, not on every source edit (podman caches image layers).
+COPY package.json package-lock.json ./
+RUN npm ci --no-fund --no-audit
+
+COPY tsconfig.json vite.config.ts ./
+COPY icon.png README.md ./
+COPY src ./src
+COPY frontend ./frontend
+COPY scripts ./scripts
+
+RUN npm run build
+
+FROM scratch
+
+COPY --from=builder /app/dist /extension/dist
+COPY --from=builder /app/media /extension/media
+COPY --from=builder /app/package.json /extension/
+COPY --from=builder /app/icon.png /extension/
+COPY --from=builder /app/README.md /extension/
+
+LABEL org.opencontainers.image.title="ocid" \
+      org.opencontainers.image.description="Peer-to-peer OCI image sharing: seed, follow and pull images from teammates over QUIC — no registry, no accounts." \
+      org.opencontainers.image.vendor="safonas" \
+      org.opencontainers.image.source="https://github.com/safonas/ocid" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later" \
+      io.podman-desktop.api.version=">= 1.22.0"
