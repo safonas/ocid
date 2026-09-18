@@ -10,7 +10,9 @@
 # Invoke from the repo root; `[no-cd]` keeps each recipe running there too
 # (otherwise just would cd into `just/`). Self-contained: just modules
 # cannot see the parent's variables/recipes, so settings mirror the root
-# justfile. The root file provides flat `just ext-*` shims.
+# justfile. The root file provides flat `just ext-*` shims. `build`, `check`
+# and `smoke` auto-install dependencies when node_modules is missing;
+# `install` forces a reinstall (e.g. after package.json changes).
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set minimum-version := "1.47.0"
@@ -55,21 +57,36 @@ _node_net := podman + " run --rm --userns=keep-id --user " + host_uid + ":" + ho
 install: volumes
     {{ _node }} npm install --no-fund --no-audit
 
+# Install dependencies only when node_modules is missing (first build, or
+# after `just ext-clean`); a no-op otherwise, so rebuild iterations don't
+# pay for an extra npm invocation.
+[private]
+[no-cd]
+deps: volumes
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    if [ -d {{ ext_dir }}/node_modules ]; then
+        exit 0
+    fi
+    echo "-> node_modules missing; running npm install"
+    {{ _node }} npm install --no-fund --no-audit
+
 # Build the extension: backend dist/ + webview media/.
 [no-cd]
-build:
+build: deps
     {{ _node }} npm run build
 
 # Typecheck the extension: tsc + svelte-check.
 [no-cd]
-check:
+check: deps
     {{ _node }} npm run typecheck
 
 # Functional smoke test: run the extension client (OcidClient + SseWatcher)
 # against a throwaway daemon on 127.0.0.1:5070. Needs ./bin/ocid — the root
 # `ext-smoke` shim builds it first via `just bin`.
 [no-cd]
-smoke:
+smoke: deps
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"

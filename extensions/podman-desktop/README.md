@@ -31,12 +31,16 @@ registration, ticket bootstrap) is tracked in
 ## Develop
 
 ```sh
-just ext-install   # npm install (runs in a pinned wolfi node container)
 just ext-build     # build backend (dist/) + frontend (media/)
 just ext-check     # tsc + svelte-check
 just ext-smoke     # run the extension client against a throwaway daemon
 just ext-image     # build the OCI artifact (for the catalog)
+just ext-install   # force npm install (e.g. after package.json changes)
 ```
+
+`build`, `check` and `smoke` auto-run npm install when `node_modules` is
+missing (first run, or after `just ext-clean`); `just ext-install` forces a
+reinstall, e.g. after changing `package.json`.
 
 Caches persist across runs: npm's download cache lives in the `ocid-npm-cache`
 volume, and the OCI build caches `npm ci` in its own layer (rebuilt only when
@@ -51,7 +55,7 @@ with state under `./.dev/ocid-home`:
 
 1. `just run` — starts the daemon on the host's `127.0.0.1:5050`
    (state in `.dev/ocid-home`; `rm -rf .dev/ocid-home` resets it to defaults).
-2. `just ext-install && just ext-build` — build the extension.
+2. `just ext-build` — build the extension (installs node_modules on first run).
 3. In Podman Desktop: **Settings → Extensions → Add a local folder
    extension...** and select this directory (`extensions/podman-desktop`).
    Podman Desktop watches the folder and reloads when it changes.
