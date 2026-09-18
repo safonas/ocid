@@ -1,0 +1,8 @@
+# Dependency updates are owned by Renovate (see renovate.json). This file
+# exists to disable Dependabot version updates — including any configured
+# through the repository settings UI, whose scheduled runs kept failing —
+# because a checked-in dependabot.yml supersedes the UI configuration.
+# To hand an ecosystem back to Dependabot, add it under `updates` below and
+# remove the matching Renovate config.
+version: 2
+updates: []
