@@ -41,7 +41,7 @@ jobs:
           # Required: without this the action unsets the severity filter
           # for SARIF output and the gate fires on ANY severity.
           limit-severities-for-sarif: true
-          version: v0.70.0 # pinned Trivy binary; the vuln DB still updates daily
+          version: v0.74.0 # pinned Trivy binary; the vuln DB still updates daily
 
       - name: Scan working tree
         if: always()
@@ -58,7 +58,7 @@ jobs:
           # Required: without this the action unsets the severity filter
           # for SARIF output and the gate fires on ANY severity.
           limit-severities-for-sarif: true
-          version: v0.70.0 # pinned Trivy binary; the vuln DB still updates daily
+          version: v0.74.0 # pinned Trivy binary; the vuln DB still updates daily
 
       - name: Upload image results to code scanning
         if: always()
