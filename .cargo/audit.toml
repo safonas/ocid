@@ -1,0 +1,10 @@
+# cargo-audit configuration (https://github.com/rustsec/cargo-audit).
+# Vulnerabilities fail `cargo audit` by default; these ignores silence
+# informational "unmaintained" advisories for transitive dependencies of
+# the iroh stack that have no fixed versions to bump to.
+[advisories]
+ignore = [
+    "RUSTSEC-2023-0089", # atomic-polyfill (via heapless)
+    "RUSTSEC-2024-0436", # paste (via netlink)
+    "RUSTSEC-2024-0370", # proc-macro-error (via genawaiter)
+]

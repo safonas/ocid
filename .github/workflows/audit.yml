@@ -1,0 +1,36 @@
+# Dependency vulnerability audit (RustSec advisory DB).
+#
+# Runs weekly, on demand, and on every change to Cargo.lock (pushes and
+# PRs), so dependency bumps are audited before they land on main.
+# Vulnerabilities fail the job; informational advisories (unmaintained
+# crates) are curated in .cargo/audit.toml.
+
+name: Cargo audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  push:
+    branches: [main]
+    paths: ["Cargo.lock"]
+  pull_request:
+    paths: ["Cargo.lock"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit dependencies
+        run: cargo audit
