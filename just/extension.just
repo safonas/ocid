@@ -113,18 +113,29 @@ smoke: deps
 # and register it in the podman-desktop-catalog to distribute. PLATFORMS
 # builds a multi-arch manifest list instead (e.g. linux/amd64,linux/arm64 —
 # the content is arch-independent JS, but pullers match the manifest arch).
-# Multi-arch uses --manifest: podman 4.x (ubuntu-latest) only creates a
-# manifest list when --manifest is given; with -t alone it tags a single
-# platform's image.
+# Multi-arch builds each platform separately and assembles the manifest
+# list explicitly: podman 4.x (ubuntu-latest) creates no list from
+# `build --platform a,b` and its plain `push` ships a single platform.
 [no-cd]
 image platforms="":
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -n "{{ platforms }}" ]; then
-        {{ podman }} build --platform "{{ platforms }}" --manifest {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
-    else
+    if [ -z "{{ platforms }}" ]; then
         {{ podman }} build -t {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
+        exit 0
     fi
+    IFS=',' read -ra plats <<< "{{ platforms }}"
+    tags=()
+    for p in "${plats[@]}"; do
+        t="{{ ext_image }}-$(echo "$p" | tr '/' '-')"
+        {{ podman }} build --platform "$p" -t "$t" -f {{ ext_dir }}/Containerfile {{ ext_dir }}
+        tags+=("$t")
+    done
+    {{ podman }} manifest rm {{ ext_image }} >/dev/null 2>&1 || true
+    {{ podman }} manifest create {{ ext_image }}
+    for t in "${tags[@]}"; do
+        {{ podman }} manifest add {{ ext_image }} "containers-storage:$t"
+    done
 
 # Bump the extension's package.json to VERSION and sync package-lock.json
 # (needs the node container; used by `just ship cut-release`). A plain
