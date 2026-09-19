@@ -109,33 +109,12 @@ smoke: deps
     {{ _node_net }} node --experimental-strip-types scripts/smoke.mts
 
 # Build the extension OCI artifact (scratch base, per the publishing guide:
-# https://podman-desktop.io/docs/extensions/publish). Push it to a registry
-# and register it in the podman-desktop-catalog to distribute. PLATFORMS
-# builds a multi-arch manifest list instead (e.g. linux/amd64,linux/arm64 —
-# the content is arch-independent JS, but pullers match the manifest arch).
-# Multi-arch builds each platform separately and assembles the manifest
-# list explicitly: podman 4.x (ubuntu-latest) creates no list from
-# `build --platform a,b` and its plain `push` ships a single platform.
+# https://podman-desktop.io/docs/extensions/publish). Single-arch local
+# build for development; the extension workflow publishes the multi-arch
+# (amd64 + arm64) artifact via a digest-pinned buildah container.
 [no-cd]
-image platforms="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -z "{{ platforms }}" ]; then
-        {{ podman }} build -t {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
-        exit 0
-    fi
-    IFS=',' read -ra plats <<< "{{ platforms }}"
-    tags=()
-    for p in "${plats[@]}"; do
-        t="{{ ext_image }}-$(echo "$p" | tr '/' '-')"
-        {{ podman }} build --platform "$p" -t "$t" -f {{ ext_dir }}/Containerfile {{ ext_dir }}
-        tags+=("$t")
-    done
-    {{ podman }} manifest rm {{ ext_image }} >/dev/null 2>&1 || true
-    {{ podman }} manifest create {{ ext_image }}
-    for t in "${tags[@]}"; do
-        {{ podman }} manifest add {{ ext_image }} "containers-storage:$t"
-    done
+image:
+    {{ podman }} build -t {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
 
 # Bump the extension's package.json to VERSION and sync package-lock.json
 # (needs the node container; used by `just ship cut-release`). A plain

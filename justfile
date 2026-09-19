@@ -231,8 +231,8 @@ ext-test: ext::test
 # Shim: `just ext smoke` (debug binaries are built first via `just bin`).
 [group('extension')]
 ext-smoke: bin ext::smoke
-# Shim: `just ext image` (single-arch). Multi-arch builds invoke the module
-# recipe directly with a platforms argument: `just ext image linux/amd64,linux/arm64`.
+# Shim: `just ext image` (single-arch local build; the extension workflow
+# publishes the multi-arch artifact via a pinned buildah container).
 [group('extension')]
 ext-image: ext::image
 # Shim: `just ext clean`.
