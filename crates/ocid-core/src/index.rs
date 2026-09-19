@@ -147,6 +147,10 @@ impl Index {
                 let live = p
                     .file_stem()
                     .and_then(|s| s.to_str())
+                    .filter(|hex| {
+                        hex.len() == 64
+                            && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                    })
                     .map(|hex| self.paths.digests().join(format!("{hex}.json")).exists())
                     .unwrap_or(false);
                 if !live {
@@ -163,13 +167,16 @@ impl Index {
     // releases
     // -----------------------------------------------------------------------
 
-    fn release_dir(&self, publisher: &PublisherId, name: &str) -> PathBuf {
-        self.paths.releases().join(publisher.to_string()).join(name)
+    fn release_dir(&self, publisher: &PublisherId, name: &str) -> Result<PathBuf> {
+        oci::validate_name(name)?;
+        Ok(self.paths.releases().join(publisher.to_string()).join(name))
     }
 
-    fn release_path(&self, publisher: &PublisherId, name: &str, tag: &str) -> PathBuf {
-        self.release_dir(publisher, name)
-            .join(format!("{tag}.json"))
+    fn release_path(&self, publisher: &PublisherId, name: &str, tag: &str) -> Result<PathBuf> {
+        oci::validate_tag(tag)?;
+        Ok(self
+            .release_dir(publisher, name)?
+            .join(format!("{tag}.json")))
     }
 
     pub fn get_release(
@@ -178,9 +185,7 @@ impl Index {
         name: &str,
         tag: &str,
     ) -> Result<Option<Release>> {
-        oci::validate_name(name)?;
-        oci::validate_tag(tag)?;
-        let p = self.release_path(publisher, name, tag);
+        let p = self.release_path(publisher, name, tag)?;
         if !p.exists() {
             return Ok(None);
         }
@@ -198,7 +203,7 @@ impl Index {
             }
         }
         write_atomic(
-            &self.release_path(&p.publisher, &p.name, &p.tag),
+            &self.release_path(&p.publisher, &p.name, &p.tag)?,
             serde_json::to_vec_pretty(release)?.as_slice(),
         )?;
         for r in &p.referrers {
@@ -208,9 +213,7 @@ impl Index {
     }
 
     pub fn remove_release(&self, publisher: &PublisherId, name: &str, tag: &str) -> Result<bool> {
-        oci::validate_name(name)?;
-        oci::validate_tag(tag)?;
-        let p = self.release_path(publisher, name, tag);
+        let p = self.release_path(publisher, name, tag)?;
         if !p.exists() {
             return Ok(false);
         }
@@ -230,13 +233,14 @@ impl Index {
     /// When the release record was last written (used for GC grace periods).
     pub fn release_mtime(&self, release: &Release) -> Option<std::time::SystemTime> {
         let p = &release.payload;
-        std::fs::metadata(self.release_path(&p.publisher, &p.name, &p.tag))
-            .and_then(|m| m.modified())
+        self.release_path(&p.publisher, &p.name, &p.tag)
             .ok()
+            .and_then(|p| std::fs::metadata(p).ok())
+            .and_then(|m| m.modified().ok())
     }
 
     pub fn list_tags(&self, publisher: &PublisherId, name: &str) -> Result<Vec<String>> {
-        let dir = self.release_dir(publisher, name);
+        let dir = self.release_dir(publisher, name)?;
         let mut tags = Vec::new();
         if let Ok(rd) = std::fs::read_dir(&dir) {
             for entry in rd.flatten() {
@@ -289,4 +293,81 @@ fn walk_json(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn index() -> Index {
+        Index {
+            paths: Paths {
+                home: std::env::temp_dir()
+                    .join(format!("ocid-index-test-{}", uuid::Uuid::new_v4())),
+            },
+        }
+    }
+
+    fn publisher() -> PublisherId {
+        crate::identity::Identity::generate().id()
+    }
+
+    #[test]
+    fn rejects_traversal_names() {
+        let ix = index();
+        let p = publisher();
+        for name in [
+            "../evil",
+            "a/../b",
+            "..",
+            ".",
+            "a/..",
+            "/abs",
+            "//abs",
+            "a//b",
+            "",
+            "a/b/c/../../d",
+        ] {
+            assert!(
+                ix.release_dir(&p, name).is_err(),
+                "name {name:?} must be rejected"
+            );
+            assert!(
+                ix.list_tags(&p, name).is_err(),
+                "name {name:?} must be rejected by list_tags"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_traversal_tags() {
+        let ix = index();
+        let p = publisher();
+        for tag in ["../evil", "..", "", "a/b", "/abs", "a\\b", ".hidden"] {
+            assert!(
+                ix.release_path(&p, "app", tag).is_err(),
+                "tag {tag:?} must be rejected"
+            );
+            assert!(
+                ix.get_release(&p, "app", tag).is_err(),
+                "tag {tag:?} must be rejected by get_release"
+            );
+            assert!(
+                ix.remove_release(&p, "app", tag).is_err(),
+                "tag {tag:?} must be rejected by remove_release"
+            );
+        }
+    }
+
+    #[test]
+    fn valid_references_stay_within_the_store() {
+        let ix = index();
+        let p = publisher();
+        let dir = ix.release_dir(&p, "web/app").unwrap();
+        assert!(dir.starts_with(ix.paths.releases()));
+        assert!(dir.ends_with(format!("{p}/web/app")));
+        let file = ix.release_path(&p, "web/app", "1.0").unwrap();
+        assert!(file.starts_with(ix.paths.releases()));
+        assert!(file.ends_with("1.0.json"));
+    }
 }
