@@ -87,32 +87,22 @@ jobs:
       - name: Register arm64 binfmt handlers
         run: docker run --privileged --rm tonistiigi/binfmt:qemu-v7.0.0 --install arm64
 
-      # Built with plain podman build + explicit manifest assembly instead of
-      # the justfile recipe: this workflow checks out the TAG, so the build
-      # recipe must not depend on recipe fixes that only exist on main
-      # (podman 4.x list quirks broke three attempts — see #56, #57, #58).
-      - name: Build the multi-arch OCI artifact
+      # buildx builds and pushes the manifest list in one step. podman 4.x
+      # (ubuntu-latest) cannot do this correctly: it stamps scratch stages
+      # with the host architecture and dedupes manifest entries by digest,
+      # so `build --platform a,b` / `manifest add` paths shipped a single
+      # amd64 entry three times (#56–#59). Built inline in the workflow —
+      # not via the justfile — so the build recipe is stable against any
+      # tagged tree.
+      - name: Build and push the multi-arch OCI artifact
         env:
           GHCR: ghcr.io/${{ github.repository_owner }}/ocid-extension
           TAG: ${{ env.TAG }}
         run: |
           set -euo pipefail
-          cd extensions/podman-desktop
-          for p in amd64 arm64; do
-            podman build --platform "linux/$p" -t "$GHCR:$TAG-$p" -f Containerfile .
-          done
-          podman manifest create "$GHCR:$TAG"
-          podman manifest add "$GHCR:$TAG" "containers-storage:$GHCR:$TAG-amd64"
-          podman manifest add "$GHCR:$TAG" "containers-storage:$GHCR:$TAG-arm64"
-
-      - name: Push to ghcr.io
-        env:
-          GHCR: ghcr.io/${{ github.repository_owner }}/ocid-extension
-          TAG: ${{ env.TAG }}
-        run: |
-          set -euo pipefail
-          echo '${{ secrets.GITHUB_TOKEN }}' | podman login ghcr.io -u '${{ github.repository_owner }}' --password-stdin
-          # manifest push ships the whole list (plain `podman push` on
-          # podman 4.x resolves the name to a single platform's image).
-          podman manifest push "$GHCR:$TAG" "docker://$GHCR:$TAG"
-          podman manifest push "$GHCR:$TAG" "docker://$GHCR:testing"
+          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.repository_owner }}' --password-stdin
+          docker buildx create --name ocid-ext --driver docker-container --use
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t "$GHCR:$TAG" -t "$GHCR:testing" \
+            --push extensions/podman-desktop
