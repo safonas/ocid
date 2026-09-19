@@ -230,7 +230,11 @@ jobs:
       # with upload-assets: false (GitHub validates every called-workflow job
       # permission at startup, skipped jobs included).
       contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
+    # Must be a tag ref, not a SHA: the generator resolves its SLSA-verified
+    # builder binary by the ref this workflow is called with and rejects
+    # commit SHAs ("Expected ref of the form refs/tags/vX.Y.Z"). renovate.json
+    # exempts this dependency from digest pinning (see upstream RENOVATE.md).
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.build-linux.outputs.digests }}"
       # The generator's release upload resolves releases by tag, which cannot

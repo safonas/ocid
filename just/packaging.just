@@ -74,6 +74,10 @@ brew:
     command -v brew >/dev/null || { echo "brew not found on PATH" >&2; exit 1; }
     brew tap safonas/tap >/dev/null 2>&1 || true
     tap=$(brew --repository safonas/tap)
+    if ! git -C "$tap" rev-parse --git-dir >/dev/null 2>&1 || [ ! -w "$tap/Formula" ]; then
+        echo "error: host brew tap '$tap' is not usable (owned by another user or read-only); fix access before auditing" >&2
+        exit 1
+    fi
     ver=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
     url="https://github.com/safonas/ocid/archive/refs/tags/v$ver.tar.gz"
     git -C "$tap" fetch -q origin && git -C "$tap" checkout -q main && git -C "$tap" reset -q --hard origin/main

@@ -92,6 +92,7 @@ sync:
     #!/usr/bin/env bash
     set -euo pipefail
     git diff --quiet && git diff --cached --quiet || { echo "error: working tree has uncommitted changes" >&2; exit 1; }
+    git remote get-url github >/dev/null 2>&1 || { echo "error: no 'github' remote (fix: git remote add github \"\$(git remote get-url origin)\")" >&2; exit 1; }
     git checkout -q main
     git pull github main --ff-only
     git log --oneline -3
