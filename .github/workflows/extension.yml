@@ -101,6 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           echo '${{ secrets.GITHUB_TOKEN }}' | podman login ghcr.io -u '${{ github.repository_owner }}' --password-stdin
-          podman tag "$GHCR:$TAG" "$GHCR:testing"
-          podman push "$GHCR:$TAG"
-          podman push "$GHCR:testing"
+          # manifest push ships the whole list (plain `podman push` on
+          # podman 4.x resolves the name to a single platform's image).
+          podman manifest push "$GHCR:$TAG" "docker://$GHCR:$TAG"
+          podman manifest push "$GHCR:$TAG" "docker://$GHCR:testing"
