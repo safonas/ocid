@@ -2,7 +2,7 @@
   "name": "ocid",
   "displayName": "ocid",
   "description": "Peer-to-peer OCI image sharing: seed, follow and pull images from teammates over QUIC — no registry, no accounts.",
-  "version": "0.5.1",
+  "version": "0.6.2",
   "icon": "icon.png",
   "publisher": "safonas",
   "type": "module",
