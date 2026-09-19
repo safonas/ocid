@@ -113,13 +113,18 @@ smoke: deps
 # and register it in the podman-desktop-catalog to distribute. PLATFORMS
 # builds a multi-arch manifest list instead (e.g. linux/amd64,linux/arm64 —
 # the content is arch-independent JS, but pullers match the manifest arch).
+# Multi-arch uses --manifest: podman 4.x (ubuntu-latest) only creates a
+# manifest list when --manifest is given; with -t alone it tags a single
+# platform's image.
 [no-cd]
 image platforms="":
     #!/usr/bin/env bash
     set -euo pipefail
-    flags=()
-    [ -n "{{ platforms }}" ] && flags=(--platform "{{ platforms }}")
-    {{ podman }} build "${flags[@]}" -t {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
+    if [ -n "{{ platforms }}" ]; then
+        {{ podman }} build --platform "{{ platforms }}" --manifest {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
+    else
+        {{ podman }} build -t {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
+    fi
 
 # Bump the extension's package.json to VERSION and sync package-lock.json
 # (needs the node container; used by `just ship cut-release`). A plain
