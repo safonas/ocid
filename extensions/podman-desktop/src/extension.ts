@@ -17,6 +17,8 @@ import { spawn } from 'node:child_process';
 import { access, constants, mkdir, open, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { isPodmanEngine, menuImageSource, ocidName } from './images';
+import type { MenuImage } from './images';
 import { OcidClient } from './ocid-client';
 import { isRegistered, register, registryHost } from './registries';
 import { DashboardState, short } from './state';
@@ -27,18 +29,6 @@ let panel: api.WebviewPanel | undefined;
 let statusBar: api.StatusBarItem | undefined;
 /** Releases shipped by followed peers since the dashboard was last opened. */
 let newFromFollowed = 0;
-
-/** docker.io/library/alpine:latest -> alpine:latest; quay.io/org/app -> org/app. */
-function ocidName(repoTag: string): string {
-  let rest = repoTag;
-  const slash = rest.indexOf('/');
-  const first = slash === -1 ? '' : rest.slice(0, slash);
-  if (slash !== -1 && (first.includes('.') || first.includes(':') || first === 'localhost')) {
-    rest = rest.slice(slash + 1);
-    if (rest.startsWith('library/')) rest = rest.slice('library/'.length);
-  }
-  return rest;
-}
 
 /** Run podman as a visible task in Podman Desktop's task widget. */
 async function podman(args: string[], title: string): Promise<void> {
@@ -236,14 +226,22 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
   // "Push image to ocid peers" on the Images page. The daemon signs the
   // pushed release and announces it on gossip, so peers following this
   // node replicate it automatically — no further calls needed here.
-  const pushImage = api.commands.registerCommand('ocid.image.push', async (image: api.ImageInfo) => {
-    const source = image.RepoTags?.[0];
+  // NOTE: the argument is PD's Images-page UI object (name/tag/engineName),
+  // not the api.ImageInfo the registration type suggests — see images.ts.
+  const pushImage = api.commands.registerCommand('ocid.image.push', async (image: MenuImage) => {
+    if (!image) {
+      api.window.showErrorMessage('Run this from an image in the Images page.');
+      return;
+    }
+    const source = menuImageSource(image);
     if (!source) {
       api.window.showErrorMessage('The image has no tag to push.');
       return;
     }
-    if (image.engineType !== 'podman') {
-      api.window.showErrorMessage(`ocid push supports podman engines (got ${image.engineName}).`);
+    if (!isPodmanEngine(image)) {
+      api.window.showErrorMessage(
+        `ocid push supports podman engines (got ${image.engineName ?? image.engineType ?? 'unknown'}).`,
+      );
       return;
     }
     const name = ocidName(source);
