@@ -54,6 +54,11 @@ Managed by `.pre-commit-config.yaml`.
 - The workspace version lives in the root `Cargo.toml` (`Cargo.lock` follows via `just check`).
 - Before creating a **major or minor** version tag, always ask first and suggest the next version — do not tag unilaterally.
 - **Patch** tags are fine without asking, provided the changes are miniscule (docs, comments, tiny fixes, digest pins).
+- The SLSA generator workflow (`slsa.yml`) must be called by **tag ref**, never a SHA: it resolves its
+  SLSA-verified builder binary by the ref it is called with and rejects commit SHAs (upstream
+  `RENOVATE.md` documents this; `renovate.json` exempts it from digest pinning). Consequence:
+  OpenSSF Scorecard files a "Pinned-Dependencies" alert for it — that alert is expected and should
+  be dismissed as *won't fix* with a reference to this note.
 
 ## Model routing & cost guidelines
 

@@ -24,6 +24,12 @@
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "actions minor and patch"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["slsa-framework/slsa-github-generator"],
+      "description": "The SLSA generator must be called by tag ref (it resolves its verified builder binary by tag); SHA pinning breaks it. See upstream RENOVATE.md.",
+      "pinDigests": false
     }
   ]
 }
