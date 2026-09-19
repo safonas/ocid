@@ -246,7 +246,10 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      actions: read # To download the provenance artifact.
+      # read: download the provenance artifact; write: dispatch the
+      # extension image push and brew tap drift check (GITHUB_TOKEN events
+      # don't trigger workflows on their own).
+      actions: write
     steps:
       - name: Download provenance
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -266,4 +269,9 @@ jobs:
           fi
           gh release upload "${{ inputs.tag }}" provenance/*.intoto.jsonl --clobber
           gh release edit "${{ inputs.tag }}" --draft=false
+          # Events created by GITHUB_TOKEN do not start workflow runs, so
+          # workflows watching `release: published` (extension image push,
+          # brew tap drift check) must be dispatched explicitly.
+          gh workflow run extension.yml --ref main -f tag='${{ inputs.tag }}'
+          gh workflow run brew-drift.yml --ref main
           echo "Published: https://github.com/safonas/ocid/releases/tag/${{ inputs.tag }}"
