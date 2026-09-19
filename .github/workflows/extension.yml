@@ -90,7 +90,9 @@ jobs:
       - name: Build the multi-arch OCI artifact
         env:
           EXT_IMAGE: ghcr.io/${{ github.repository_owner }}/ocid-extension:${{ env.TAG }}
-        run: just ext-image linux/amd64,linux/arm64
+        # Module-recipe invocation so the platforms argument forwards
+        # (the flat `ext-image` shim is single-arch).
+        run: just ext image linux/amd64,linux/arm64
 
       - name: Push to ghcr.io
         env:
