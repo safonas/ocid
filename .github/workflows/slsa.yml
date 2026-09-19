@@ -78,6 +78,7 @@ jobs:
           SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
           export SOURCE_DATE_EPOCH
           export RUSTFLAGS="--remap-path-prefix=${GITHUB_WORKSPACE}=/build"
+          PKG_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
 
           # Build x86_64
           cargo build --release --locked --target x86_64-unknown-linux-gnu
@@ -88,20 +89,13 @@ jobs:
 
           mkdir -p dist
 
-          # Standalone binaries
-          cp target/x86_64-unknown-linux-gnu/release/ocid dist/ocid-linux-amd64
-          cp target/x86_64-unknown-linux-gnu/release/ocictl dist/ocictl-linux-amd64
-          cp target/x86_64-unknown-linux-gnu/release/ocitop dist/ocitop-linux-amd64
-          cp target/aarch64-unknown-linux-gnu/release/ocid dist/ocid-linux-arm64
-          cp target/aarch64-unknown-linux-gnu/release/ocictl dist/ocictl-linux-arm64
-          cp target/aarch64-unknown-linux-gnu/release/ocitop dist/ocitop-linux-arm64
-
-          # Deterministic tarballs
+          # Bundles: ocid + ocictl + ocitop per platform, like the .deb/.rpm.
+          # Deterministic tarballs.
           GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
-            -czf dist/ocid-linux-amd64.tar.gz -C target/x86_64-unknown-linux-gnu/release ocid ocictl ocitop
+            -czf "dist/ocid-${PKG_VERSION}-linux-amd64.tar.gz" -C target/x86_64-unknown-linux-gnu/release ocid ocictl ocitop
 
           GZIP="-n" tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
-            -czf dist/ocid-linux-arm64.tar.gz -C target/aarch64-unknown-linux-gnu/release ocid ocictl ocitop
+            -czf "dist/ocid-${PKG_VERSION}-linux-arm64.tar.gz" -C target/aarch64-unknown-linux-gnu/release ocid ocictl ocitop
 
       - name: Build .deb and .rpm packages
         env:
@@ -142,7 +136,7 @@ jobs:
           set -euo pipefail
 
           cd dist
-          files=(./ocid-linux-* ./ocictl-linux-* ./ocitop-linux-* ./*.deb ./*.rpm)
+          files=(./ocid-*-linux-*.tar.gz ./*.deb ./*.rpm)
           # Generate the subjects (base64 encoded).
           echo "digests=$(sha256sum "${files[@]}" | base64 -w0)" >> "${GITHUB_OUTPUT}"
 
@@ -193,6 +187,7 @@ jobs:
           SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
           export SOURCE_DATE_EPOCH
           export RUSTFLAGS="--remap-path-prefix=${GITHUB_WORKSPACE}=/build"
+          PKG_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
 
           # Build native (arm64 on Apple Silicon runners)
           cargo build --release --locked
@@ -202,17 +197,16 @@ jobs:
 
           mkdir -p dist
 
-          # Standalone binaries (arm64 = native, amd64 = cross)
-          cp target/release/ocid dist/ocid-darwin-arm64
-          cp target/release/ocictl dist/ocictl-darwin-arm64
-          cp target/release/ocitop dist/ocitop-darwin-arm64
-          cp target/x86_64-apple-darwin/release/ocid dist/ocid-darwin-amd64
-          cp target/x86_64-apple-darwin/release/ocictl dist/ocictl-darwin-amd64
-          cp target/x86_64-apple-darwin/release/ocitop dist/ocitop-darwin-amd64
+          # Deterministic bundles: ocid + ocictl + ocitop per platform, like
+          # the .deb/.rpm. GNU tar (gtar) ships on GitHub macOS runners; BSD
+          # tar has no --sort/--mtime/--owner flags (non-deterministic fallback).
+          TAR=(tar)
+          if command -v gtar >/dev/null 2>&1; then
+            TAR=(gtar --sort=name "--mtime=@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner)
+          fi
 
-          # Deterministic tarballs (BSD tar on macOS doesn't support --sort/--owner/--group)
-          cd target/release && tar -czf ../../dist/ocid-darwin-arm64.tar.gz ocid ocictl ocitop && cd ../..
-          cd target/x86_64-apple-darwin/release && tar -czf ../../../dist/ocid-darwin-amd64.tar.gz ocid ocictl ocitop && cd ../../..
+          "${TAR[@]}" -czf "dist/ocid-${PKG_VERSION}-darwin-arm64.tar.gz" -C target/release ocid ocictl ocitop
+          "${TAR[@]}" -czf "dist/ocid-${PKG_VERSION}-darwin-amd64.tar.gz" -C target/x86_64-apple-darwin/release ocid ocictl ocitop
 
       - name: Upload release assets
         env:

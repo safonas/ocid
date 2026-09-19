@@ -118,6 +118,41 @@ body {
   white-space: nowrap;
 }
 
+/* setup/onboarding card (daemon start, registry registration) */
+.setup {
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+
+.setup h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.setup p {
+  margin: 0 0 10px;
+}
+
+.setup .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup pre {
+  background: var(--ocid-bg);
+  border: 1px solid var(--ocid-border);
+  border-radius: 3px;
+  padding: 6px 10px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+.setup a {
+  color: var(--ocid-link);
+}
+
 .ticket {
   display: flex;
   gap: 24px;

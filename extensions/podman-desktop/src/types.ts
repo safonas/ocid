@@ -110,7 +110,9 @@ export type Action =
   | { kind: 'follow'; publisher: string; mode: Mode }
   | { kind: 'unfollow'; publisher: string }
   | { kind: 'pin'; reference: string }
-  | { kind: 'unpin'; reference: string };
+  | { kind: 'unpin'; reference: string }
+  | { kind: 'register-registry' }
+  | { kind: 'start-daemon' };
 
 export interface WebviewIn {
   type: 'ready';
@@ -123,6 +125,20 @@ export interface WebviewAction {
 
 export type WebviewMessage = WebviewIn | WebviewAction;
 
+/** Extension-internal: host-side integration state for the setup card —
+ *  whether the daemon binary is available, whether the local registry is
+ *  registered with podman, and which registration flow applies. */
+export interface SetupState {
+  /** 'linux' = registries.conf drop-in supported; other platforms get a
+   *  TLS-bypass fallback and a "coming soon" hint. */
+  platform: 'linux' | 'other';
+  /** Registry host:port podman should use. */
+  registryHost: string;
+  registered: boolean;
+  /** Absolute path of the ocid binary, if one was found. */
+  ocidPath?: string;
+}
+
 export interface StateSnapshot {
   daemon: boolean;
   status?: Status;
@@ -132,6 +148,8 @@ export interface StateSnapshot {
   events: TimedEvent[];
   /** Live transfers, newest update first (extension-internal). */
   transfers: TransferState[];
+  /** Host integration state; always present (also while the daemon is down). */
+  setup?: SetupState;
   /** Human-readable failure of the last action, if any. */
   error?: string;
 }

@@ -56,7 +56,10 @@ cut-release VERSION: github-remote
     just ci
     sed -i -e "s|^version = \".*\"|version = \"$ver\"|" Cargo.toml
     just check
-    git add Cargo.toml Cargo.lock
+    # Keep the Podman Desktop extension's package.json in lockstep (its
+    # package-lock.json is refreshed by npm inside the node container).
+    just ext::bump-version "$ver"
+    git add Cargo.toml Cargo.lock extensions/podman-desktop/package.json extensions/podman-desktop/package-lock.json
     git commit -m "chore(release): bump version to $tag"
     git push -u github "$branch"
     gh pr create --base main --head "$branch" --title "Release $tag" \

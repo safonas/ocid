@@ -8,6 +8,7 @@
   import ReleasesTable from './lib/ReleasesTable.svelte';
   import PeersList from './lib/PeersList.svelte';
   import EventsLog from './lib/EventsLog.svelte';
+  import SetupCard from './lib/SetupCard.svelte';
 
   let snap: StateSnapshot = $state({ daemon: false, events: [], transfers: [] });
   onState(s => {
@@ -46,15 +47,17 @@
 {/if}
 
 {#if !snap.daemon}
+  <SetupCard setup={snap.setup} daemon={false} />
   <div class="empty">
-    <h2>No ocid daemon</h2>
-    <p>
-      Start one on this machine — <code class="mono">ocid</code> — it serves the registry and
-      control API on <code class="mono">127.0.0.1:5050</code>. Install it from the release assets
-      or Homebrew; this dashboard connects automatically.
+    <p class="dim">
+      The dashboard connects automatically once the daemon serves
+      <code class="mono">127.0.0.1:5050</code>.
     </p>
   </div>
 {:else}
+  {#if snap.setup && !snap.setup.registered}
+    <SetupCard setup={snap.setup} daemon={true} />
+  {/if}
   <nav class="tabs">
     {#each tabs as t (t.id)}
       <Button type="tab" selected={tab === t.id} onclick={() => (tab = t.id)}>{t.label}</Button>

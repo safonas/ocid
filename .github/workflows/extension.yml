@@ -1,0 +1,104 @@
+# Podman Desktop extension: check on PRs, publish the OCI artifact to
+# ghcr.io when a release is published (or on demand for an existing tag).
+#
+# Testers install it in Podman Desktop via Settings → Extensions →
+# "Install from OCI image": ghcr.io/safonas/ocid-extension:testing.
+#
+# The artifact is arch-independent JS, but the manifest list still carries
+# amd64 + arm64 so pulls match on any host.
+
+name: extension
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build the extension image from (e.g. v0.6.2)'
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - 'extensions/podman-desktop/**'
+      - 'just/extension.just'
+      - '.github/workflows/extension.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  # PRs: typecheck, unit tests, and an image build (no push).
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install just
+        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2
+        with:
+          tool: just
+
+      - name: Typecheck
+        run: just ext-check
+
+      - name: Unit tests
+        run: just ext-test
+
+      - name: Build the OCI artifact
+        run: just ext-image
+
+  # Release/dispatch: build the multi-arch image from the tag and push it
+  # under the version tag and the mutable :testing tag.
+  publish:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve the tag to build
+        run: |
+          set -euo pipefail
+          tag='${{ inputs.tag }}'
+          [ -n "$tag" ] || tag='${{ github.event.release.tag_name }}'
+          [ -n "$tag" ] || { echo "::error::no tag input and not a release event" >&2; exit 1; }
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install just
+        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2
+        with:
+          tool: just
+
+      - name: Typecheck and unit tests
+        run: |
+          just ext-check
+          just ext-test
+
+      # The arm64 builder stage runs under emulation (the artifact itself is
+      # arch-independent JS).
+      - name: Register arm64 binfmt handlers
+        run: docker run --privileged --rm tonistiigi/binfmt:qemu-v7.0.0 --install arm64
+
+      - name: Build the multi-arch OCI artifact
+        env:
+          EXT_IMAGE: ghcr.io/${{ github.repository_owner }}/ocid-extension:${{ env.TAG }}
+        run: just ext-image linux/amd64,linux/arm64
+
+      - name: Push to ghcr.io
+        env:
+          GHCR: ghcr.io/${{ github.repository_owner }}/ocid-extension
+          TAG: ${{ env.TAG }}
+        run: |
+          set -euo pipefail
+          echo '${{ secrets.GITHUB_TOKEN }}' | podman login ghcr.io -u '${{ github.repository_owner }}' --password-stdin
+          podman tag "$GHCR:$TAG" "$GHCR:testing"
+          podman push "$GHCR:$TAG"
+          podman push "$GHCR:testing"

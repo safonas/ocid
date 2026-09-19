@@ -5,6 +5,7 @@
 import type {
   Action,
   DaemonEvent,
+  SetupState,
   StateSnapshot,
   Status,
   WebviewMessage,
@@ -23,6 +24,14 @@ interface Dependencies {
   notify: (message: string, error: boolean) => void;
   /** Fired once per release that a *followed* publisher shipped (not ours). */
   onFollowedRelease?: (publisher: string, name: string, tag: string) => void;
+  /** Host integration state for the setup card (polled alongside the daemon,
+   *  so it stays fresh while the dashboard is open). */
+  setup: () => Promise<SetupState>;
+  /** Register the local registry with podman (Linux drop-in); throws with a
+   *  user-facing message on unsupported platforms. */
+  registerRegistry?: () => Promise<void>;
+  /** Start the daemon (found via `setup().ocidPath`); throws when absent. */
+  startDaemon?: () => Promise<void>;
 }
 
 /** The slice of the podman-desktop webview API this state talks to. */
@@ -66,10 +75,11 @@ export class DashboardState {
     if (this.polling) return;
     this.polling = true;
     try {
-      const [status, releases, peers] = await Promise.all([
+      const [status, releases, peers, setup] = await Promise.all([
         this.deps.client.status(),
         this.deps.client.releases(),
         this.deps.client.peers(),
+        this.deps.setup().catch(() => undefined),
       ]);
       this.transfers.prune();
       this.snapshot = {
@@ -79,6 +89,7 @@ export class DashboardState {
         peers,
         events: this.ring.snapshot(),
         transfers: this.transfers.list(),
+        setup,
         error: this.snapshot.error,
       };
       this.push();
@@ -90,6 +101,7 @@ export class DashboardState {
         daemon: false,
         events: this.ring.snapshot(),
         transfers: [],
+        setup: await this.deps.setup().catch(() => undefined),
         error: wasUp ? undefined : this.snapshot.error,
       };
       this.ring.clear();
@@ -217,6 +229,23 @@ export class DashboardState {
         case 'unpin': {
           const r = await c.unpin(action.reference);
           detail = `${r.changed ? 'unpinned' : 'was not pinned'} ${r.reference}`;
+          break;
+        }
+        case 'register-registry': {
+          if (!this.deps.registerRegistry) {
+            throw new Error('registry registration is not supported on this platform yet');
+          }
+          await this.deps.registerRegistry();
+          const host = this.snapshot.setup?.registryHost;
+          detail = `registered ${host} as an insecure registry (user-level; rootful podman keeps the TLS bypass)`;
+          break;
+        }
+        case 'start-daemon': {
+          if (!this.deps.startDaemon) {
+            throw new Error('daemon start is not available');
+          }
+          await this.deps.startDaemon();
+          detail = 'daemon starting — it will appear here within a few seconds';
           break;
         }
       }
