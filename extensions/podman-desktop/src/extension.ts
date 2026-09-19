@@ -17,7 +17,7 @@ import { spawn } from 'node:child_process';
 import { access, constants, mkdir, open, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { isPodmanEngine, menuImageSource, ocidName } from './images';
+import { isPodmanEngine, menuImageSource, ocidTarget } from './images';
 import type { MenuImage } from './images';
 import { OcidClient } from './ocid-client';
 import { isRegistered, register, registryHost } from './registries';
@@ -244,10 +244,10 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
       );
       return;
     }
-    const name = ocidName(source);
-    const target = `${host}/${name}`;
+    // Digest-pinned sources (no tag) get a deterministic derived tag.
+    const target = `${host}/${ocidTarget(source)}`;
     try {
-      await podmanRun(['push', source, target], `ocid: pushing ${name}`);
+      await podmanRun(['push', source, target], `ocid: pushing ${target.slice(host.length + 1)}`);
       api.window.showInformationMessage(`Pushed ${source} as ${target} — announced to peers.`);
     } catch (e) {
       api.window.showErrorMessage(

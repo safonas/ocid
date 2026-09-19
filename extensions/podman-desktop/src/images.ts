@@ -45,3 +45,17 @@ export function ocidName(repoTag: string): string {
   }
   return rest;
 }
+
+/** Destination `name:tag` on the ocid registry for a source reference.
+ *  Digest-pinned sources (`name@sha256:…`) carry no tag, and pushing to a
+ *  digest-pinned destination is rejected by podman unless the digests
+ *  happen to match — so a deterministic tag is derived from the digest
+ *  (`sha256-<12 hex>`). `name:tag@sha256:…` keeps its real tag. */
+export function ocidTarget(source: string): string {
+  const at = source.indexOf('@');
+  if (at === -1) return ocidName(source);
+  const named = ocidName(source.slice(0, at));
+  if (named.includes(':')) return named;
+  const hex = source.slice(at + 1).replace(/^sha256:/, '');
+  return `${named}:sha256-${hex.slice(0, 12)}`;
+}
