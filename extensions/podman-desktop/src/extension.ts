@@ -8,28 +8,25 @@
 //
 // It also hooks into Podman Desktop itself: toasts when a followed
 // publisher ships a release (with a one-click podman pull), and a
-// "push to ocid peers" entry on the Images page.
+// "push to ocid peers" entry on the Images page. Setup integrations:
+// registering the local registry with podman (registries.conf drop-in)
+// and starting the daemon from the host.
 
 import * as api from '@podman-desktop/api';
-import { readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { access, constants, mkdir, open, readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 import { OcidClient } from './ocid-client';
+import { isRegistered, register, registryHost } from './registries';
 import { DashboardState, short } from './state';
-import type { WebviewMessage } from './types';
+import type { SetupState, WebviewMessage } from './types';
 
 let state: DashboardState | undefined;
 let panel: api.WebviewPanel | undefined;
 let statusBar: api.StatusBarItem | undefined;
 /** Releases shipped by followed peers since the dashboard was last opened. */
 let newFromFollowed = 0;
-
-/** Registry host:port in the form podman sees (no scheme, no trailing slash). */
-function registryHost(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-  }
-}
 
 /** docker.io/library/alpine:latest -> alpine:latest; quay.io/org/app -> org/app. */
 function ocidName(repoTag: string): string {
@@ -50,6 +47,26 @@ async function podman(args: string[], title: string): Promise<void> {
   });
 }
 
+/** Whether the user-level drop-in registers the current host. Refreshed by
+ *  every setup poll; drives the podmanRun TLS-bypass decision. */
+let registeredNow = false;
+
+/** Run `podman pull/push` against the ocid registry. With the user-level
+ *  registries.conf drop-in in place, rootless podman needs no flags; the
+ *  bypass retry covers rootful podman and podman machines (which don't read
+ *  the user drop-in) as well as unregistered setups. */
+async function podmanRun(args: string[], title: string): Promise<void> {
+  if (registeredNow) {
+    try {
+      await podman(args, title);
+      return;
+    } catch {
+      // fall through to the TLS bypass
+    }
+  }
+  await podman([args[0], '--tls-verify=false', ...args.slice(1)], title);
+}
+
 /** Prefer podman's stderr when a run fails; fall back to the error message. */
 function runErrMsg(e: unknown): string {
   if (e !== null && typeof e === 'object' && 'stderr' in e) {
@@ -57,6 +74,49 @@ function runErrMsg(e: unknown): string {
     if (stderr) return stderr;
   }
   return e instanceof Error ? e.message : String(e);
+}
+
+// --- setup integrations (host side) ------------------------------------------
+
+/** Where GUI-launched Podman Desktops often miss brew/cargo installs. */
+const OCID_DIRS = [
+  '/usr/local/bin',
+  path.join(homedir(), '.cargo', 'bin'),
+  path.join(homedir(), '.local', 'bin'),
+  '/opt/homebrew/bin',
+  '/home/linuxbrew/.linuxbrew/bin',
+];
+
+async function findOcid(): Promise<string | undefined> {
+  try {
+    const found = (await api.process.exec('sh', ['-c', 'command -v ocid'])).stdout.trim();
+    if (found) return found;
+  } catch {
+    // not on PATH; check well-known locations below
+  }
+  for (const dir of OCID_DIRS) {
+    const candidate = path.join(dir, 'ocid');
+    try {
+      await access(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // keep looking
+    }
+  }
+  return undefined;
+}
+
+/** Cached daemon-binary lookup; a negative result is retried at most every
+ *  30s (the poll loop calls this every 2s). */
+let ocidPath: string | undefined;
+let ocidLookupAt = 0;
+
+async function ocidLookup(): Promise<string | undefined> {
+  if (ocidPath) return ocidPath;
+  if (Date.now() - ocidLookupAt < 30_000) return undefined;
+  ocidLookupAt = Date.now();
+  ocidPath = await findOcid();
+  return ocidPath;
 }
 
 export async function activate(extensionContext: api.ExtensionContext): Promise<void> {
@@ -70,6 +130,41 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
   });
   panel.webview.html = await webviewHtml(extensionContext, panel);
 
+  /** Setup state for the dashboard card; also keeps `registeredNow` fresh. */
+  const setup = async (): Promise<SetupState> => {
+    const linux = process.platform === 'linux';
+    registeredNow = linux && (await isRegistered(host).catch(() => false));
+    return {
+      platform: linux ? 'linux' : 'other',
+      registryHost: host,
+      registered: registeredNow,
+      ocidPath: await ocidLookup(),
+    };
+  };
+
+  /** Write the user-level registries.conf drop-in (Linux; see registries.ts). */
+  const registerRegistry = async (): Promise<void> => {
+    if (process.platform !== 'linux') {
+      throw new Error(`automatic registration is not available on ${process.platform} yet`);
+    }
+    await register(host);
+  };
+
+  /** Start the daemon detached; logs go to the extension's storage dir. */
+  const startDaemon = async (): Promise<void> => {
+    const bin = await ocidLookup();
+    if (!bin) throw new Error('no ocid binary found — install it first (see the setup card)');
+    const logDir = path.join(extensionContext.storagePath, 'daemon');
+    await mkdir(logDir, { recursive: true });
+    const out = await open(path.join(logDir, 'ocid.log'), 'a');
+    try {
+      const child = spawn(bin, [], { detached: true, stdio: ['ignore', out.fd, out.fd] });
+      child.unref();
+    } finally {
+      await out.close();
+    }
+  };
+
   state = new DashboardState({
     client,
     webview: panel.webview,
@@ -79,6 +174,9 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
         .then(choice => choice === ok),
     notify: (message, error) =>
       error ? api.window.showErrorMessage(message) : api.window.showInformationMessage(message),
+    setup,
+    registerRegistry,
+    startDaemon,
     onFollowedRelease: (publisher, name, tag) => {
       newFromFollowed++;
       const reference = `${host}/${publisher}/${name}:${tag}`;
@@ -86,10 +184,9 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
         .showInformationMessage(`${short(publisher)} released ${name}:${tag}`, 'Pull')
         .then(choice => {
           if (choice !== 'Pull') return;
-          // Plain podman pull into the local engine. Until the phase-2
-          // registries.conf onboarding lands, the local registry needs the
-          // TLS bypass; hosts with the drop-in configured can drop the flag.
-          podman(['pull', '--tls-verify=false', reference], `ocid: pulling ${name}:${tag}`)
+          // Plain podman pull into the local engine; podmanRun adds the
+          // TLS bypass when the registry is not (or cannot be) registered.
+          podmanRun(['pull', reference], `ocid: pulling ${name}:${tag}`)
             .then(() => api.window.showInformationMessage(`Pulled ${name}:${tag} from ocid peers`))
             .catch(e => api.window.showErrorMessage(`Pull failed: ${runErrMsg(e)}`));
         });
@@ -115,7 +212,7 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     if (!statusBar || !s) return;
     if (!s.daemon || !s.status) {
       statusBar.text = 'ocid: down';
-      statusBar.tooltip = 'ocid daemon not reachable — start it with `ocid`';
+      statusBar.tooltip = 'ocid daemon not reachable — open the dashboard to start it';
     } else {
       statusBar.text = `ocid: ${s.status.neighbors.length} peer(s), ${s.status.releases} release(s)`;
       statusBar.tooltip =
@@ -152,7 +249,7 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     const name = ocidName(source);
     const target = `${host}/${name}`;
     try {
-      await podman(['push', '--tls-verify=false', source, target], `ocid: pushing ${name}`);
+      await podmanRun(['push', source, target], `ocid: pushing ${name}`);
       api.window.showInformationMessage(`Pushed ${source} as ${target} — announced to peers.`);
     } catch (e) {
       api.window.showErrorMessage(

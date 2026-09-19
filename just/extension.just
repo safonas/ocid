@@ -87,7 +87,7 @@ check: deps
 # Unit tests for extension internals (no daemon needed).
 [no-cd]
 test:
-    {{ _node }} node --experimental-strip-types --test scripts/transfers.test.mts
+    {{ _node }} node --experimental-strip-types --test scripts/
 
 # Functional smoke test: run the extension client (OcidClient + SseWatcher)
 # against a throwaway daemon on 127.0.0.1:5070. Needs ./bin/ocid — the root
@@ -110,10 +110,30 @@ smoke: deps
 
 # Build the extension OCI artifact (scratch base, per the publishing guide:
 # https://podman-desktop.io/docs/extensions/publish). Push it to a registry
-# and register it in the podman-desktop-catalog to distribute.
+# and register it in the podman-desktop-catalog to distribute. PLATFORMS
+# builds a multi-arch manifest list instead (e.g. linux/amd64,linux/arm64 —
+# the content is arch-independent JS, but pullers match the manifest arch).
 [no-cd]
-image:
-    {{ podman }} build -t {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
+image platforms="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    flags=()
+    [ -n "{{ platforms }}" ] && flags=(--platform "{{ platforms }}")
+    {{ podman }} build "${flags[@]}" -t {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
+
+# Bump the extension's package.json to VERSION and sync package-lock.json
+# (needs the node container; used by `just ship cut-release`). A plain
+# install also refreshes node_modules; npm 12's --package-lock-only mode
+# refuses remote tarball fetches (optional wasm32 deps) in this container.
+[no-cd]
+bump-version VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    ver="{{ VERSION }}"
+    ver="${ver#v}"
+    sed -i -E "s/\"version\": \"[^\"]*\"/\"version\": \"$ver\"/" {{ ext_dir }}/package.json
+    {{ _node }} npm install --no-fund --no-audit
 
 # Remove extension build artifacts and dependencies.
 [no-cd]

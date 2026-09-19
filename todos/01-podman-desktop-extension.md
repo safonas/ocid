@@ -19,20 +19,32 @@
 - scratch OCI artifact for the catalog; `just ext-*` recipes
   (node toolchain containerized like cargo)
 
-## Remaining (Phase 2)
+**Phase 2 (testing round, Linux)** — setup integrations:
 
-- **Registry registration** (researched, see #15 comment): PD's settings
-  dialog is an `auth.json` login flow (https + credentials) and cannot add
-  an anonymous http registry — the extension must write a `registries.conf`
-  drop-in itself: `~/.config/containers/registries.conf.d/` on Linux
-  (rootless), `podman machine ssh` + `host.containers.internal:5050` on
-  macOS. `registry.suggestRegistry()` rejected (funnels into the login
-  dialog). Est. 2–3h Linux (verifiable: push works without
-  `--tls-verify=false`), +1–2h macOS (needs a real machine to test).
-- **Daemon delivery**: bundle per-platform `ocid` binaries in the extension
-  artifact (decided; no native Windows daemon — WSL follow-up).
-- **Daemon lifecycle**: detect/start/supervise the bundled daemon.
-- Demo GIF of the two-node flow drivable from the GUI, for the README.
+- **Registry registration**: setup card + `src/registries.ts` write the
+  user-level `registries.conf.d/100-ocid.conf` drop-in (`insecure = true`
+  for the loopback registry); push/pull drop the hardcoded
+  `--tls-verify=false` and only fall back to it when unregistered or after
+  a plain failure (rootful podman, podman machines).
+- **Daemon lifecycle v0**: detect `ocid` on `PATH` + common install dirs
+  (cached, 30s negative retry); setup card starts it detached (log in the
+  extension's `storagePath`) or shows the install one-liner.
+- **Distribution**: `extension` workflow builds the multi-arch artifact and
+  pushes `ghcr.io/safonas/ocid-extension:<tag>` + `:testing` on every
+  published release; `just cut-release` bumps the extension's package.json
+  in lockstep with Cargo.toml.
+
+## Remaining (after the testing round)
+
+- **macOS registration**: `podman machine ssh` + `host.containers.internal`
+  drop-in inside the VM (the host drop-in does not reach it); needs testing
+  on a real machine.
+- **Daemon bundling**: ship per-platform `ocid` binaries inside the
+  extension artifact (decided: no native Windows daemon — WSL follow-up).
+- **Catalog submission**: PR to podman-desktop-catalog once feedback
+  stabilizes.
+- Demo material: see [todos/14-website-demo.md](14-website-demo.md)
+  (GitHub Pages + asciinema) — deliberately not part of the testing round.
 
 ## Context
 Podman Desktop is the most direct adoption channel for the developer-collaboration
