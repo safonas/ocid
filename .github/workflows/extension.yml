@@ -85,24 +85,34 @@ jobs:
       # The arm64 builder stage runs under emulation (the artifact itself is
       # arch-independent JS).
       - name: Register arm64 binfmt handlers
-        run: docker run --privileged --rm tonistiigi/binfmt:qemu-v7.0.0 --install arm64
+        run: docker run --privileged --rm "docker.io/tonistiigi/binfmt:qemu-v7.0.0@sha256:66e11bea77a5ea9d6f0fe79b57cd2b189b5d15b93a2bdb925be22949232e4e55" --install arm64
 
-      # buildx builds and pushes the manifest list in one step. podman 4.x
-      # (ubuntu-latest) cannot do this correctly: it stamps scratch stages
-      # with the host architecture and dedupes manifest entries by digest,
-      # so `build --platform a,b` / `manifest add` paths shipped a single
-      # amd64 entry three times (#56–#59). Built inline in the workflow —
-      # not via the justfile — so the build recipe is stable against any
-      # tagged tree.
+      # buildah (in a digest-pinned container — the same container-tooling
+      # stack the repo already uses) builds both platforms into one manifest
+      # list and pushes it under the version tag and :testing. The runner's
+      # own podman 4.x cannot produce the list: its buildah stamps
+      # scratch-stage configs with the host architecture and dedupes
+      # manifest entries by digest, so every podman path shipped a single
+      # amd64 entry (#56–#59). Kept inline in the workflow — not in the
+      # justfile — so the build recipe is stable against the tagged tree
+      # this job checks out (see #59).
       - name: Build and push the multi-arch OCI artifact
         env:
           GHCR: ghcr.io/${{ github.repository_owner }}/ocid-extension
           TAG: ${{ env.TAG }}
         run: |
           set -euo pipefail
-          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.repository_owner }}' --password-stdin
-          docker buildx create --name ocid-ext --driver docker-container --use
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            -t "$GHCR:$TAG" -t "$GHCR:testing" \
-            --push extensions/podman-desktop
+          echo '${{ secrets.GITHUB_TOKEN }}' | podman login ghcr.io -u '${{ github.repository_owner }}' --password-stdin --authfile "$RUNNER_TEMP/ghcr-auth.json"
+          docker run --rm --privileged \
+            -e GHCR -e TAG \
+            -v "$PWD/extensions/podman-desktop":/src \
+            -v "$RUNNER_TEMP/ghcr-auth.json":/auth.json:ro \
+            "quay.io/buildah/stable:v1.43.2@sha256:704af5d17babbd88bd93c06ecea7554001a2e9570e1fd54687188d3ae5de0e55" \
+            sh -c '
+              set -euo pipefail
+              cd /src
+              buildah bud --platform linux/amd64 --manifest "$GHCR:$TAG" -f Containerfile .
+              buildah bud --platform linux/arm64 --manifest "$GHCR:$TAG" -f Containerfile .
+              buildah manifest push --all --authfile /auth.json "$GHCR:$TAG" "docker://$GHCR:$TAG"
+              buildah manifest push --all --authfile /auth.json "$GHCR:$TAG" "docker://$GHCR:testing"
+            '

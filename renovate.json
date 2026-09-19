@@ -6,8 +6,12 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Digest-pinned container images in justfiles",
-      "managerFilePatterns": ["/^justfile$/", "/\\.just$/"],
+      "description": "Digest-pinned container images in justfiles and workflows",
+      "managerFilePatterns": [
+        "/^justfile$/",
+        "/\\.just$/",
+        "/^\\.github\\/workflows\\/[^/]+\\.yml$/"
+      ],
       "matchStrings": [
         "\"(?<depName>[a-z0-9.-]+(?:/[a-z0-9._-]+)+):(?<currentValue>[^\"@]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
       ],
