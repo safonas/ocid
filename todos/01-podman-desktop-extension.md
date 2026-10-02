@@ -40,22 +40,22 @@ Replace the "install the daemon yourself, then register an insecure http
 registry" flow with a trusted, bundled, self-supervised daemon.
 
 ### Daemon TLS (`ocid` + `ocid-core`) — PR 1
-- [ ] `config.toml`: `tls = "off" | "auto"` (default `off`, so dev/e2e are
+- [x] `config.toml`: `tls = "off" | "auto"` (default `off`, so dev/e2e are
   unchanged); `--tls` flag persisted like `--listen`.
-- [ ] First boot with `auto`: rcgen self-signed CA + server cert under
+- [x] First boot with `auto`: rcgen self-signed CA + server cert under
   `OCID_HOME/tls/` (SANs `localhost`, `127.0.0.1`, `::1`,
   `host.containers.internal`); `server.key`/`ca.key` mode 0600; regenerated
   wholesale if any file is missing.
-- [ ] rustls listener for `/v2` + `/_ocid` (axum-server,
+- [x] rustls listener for `/v2` + `/_ocid` (axum-server,
   `tls-rustls-no-provider` + explicit ring provider install); `/metrics`
   unchanged.
-- [ ] `ocictl`/`ocitop` dial `https` and trust `tls/ca.crt` when `tls =
+- [x] `ocictl`/`ocitop` dial `https` and trust `tls/ca.crt` when `tls =
   "auto"` (`Client::from_config`).
-- [ ] Cosmetic: stop emitting `DaemonEvent::HttpRequest` for `GET /_ocid/*`
+- [x] Cosmetic: stop emitting `DaemonEvent::HttpRequest` for `GET /_ocid/*`
   (the 2s status/peers/releases poll drowns out the event log).
 
 ### Extension — PR 2
-- [ ] **TLS trust**: install `tls/ca.crt` into
+- [x] **TLS trust**: install `tls/ca.crt` into
   `~/.config/containers/certs.d/localhost:5050/ca.crt` (Linux rootless);
   macOS via `podman machine ssh`; drop `--tls-verify=false` where trust is
   installed (keep the registries.conf drop-in + bypass for `tls = "off"`
@@ -69,7 +69,7 @@ registry" flow with a trusted, bundled, self-supervised daemon.
   with `podman run --restart=always` fallback in machine VMs; `OCID_HOME`
   bind-mounted at `~/.local/share/ocid` (`:Z`); `PATH` daemon stays the
   fallback.
-- [ ] **Auto-pull**: `ocid.autoPull` checkbox in the onboarding card
+- [x] **Auto-pull**: `ocid.autoPull` checkbox in the onboarding card
   (default off) — on a followed `release_saved` event, pull into podman
   automatically instead of showing the manual Pull toast.
 

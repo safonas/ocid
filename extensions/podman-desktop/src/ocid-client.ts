@@ -11,6 +11,7 @@ import type {
   Status,
   SyncResp,
 } from './types';
+import { requestText } from './net.ts';
 
 export class OcidError extends Error {
   readonly status: number | undefined;
@@ -26,20 +27,33 @@ export class OcidError extends Error {
 
 export class OcidClient {
   readonly base: string;
+  readonly ca: string | undefined;
 
-  constructor(base: string) {
+  constructor(base: string, ca?: string) {
     this.base = base;
+    this.ca = ca;
   }
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    let resp: Response;
+  private async request<T>(
+    path: string,
+    init?: { method?: 'GET' | 'POST'; body?: string },
+  ): Promise<T> {
+    let status: number;
+    let text: string;
     try {
-      resp = await fetch(`${this.base}${path}`, init);
+      ({ status, body: text } = await requestText(new URL(`${this.base}${path}`), {
+        method: init?.method,
+        headers: init?.method === 'POST' ? { 'content-type': 'application/json' } : undefined,
+        body: init?.body,
+        ca: this.ca,
+      }));
     } catch (e) {
-      throw new OcidError(`cannot reach the ocid daemon at ${this.base}: ${(e as Error).message}`, undefined);
+      throw new OcidError(
+        `cannot reach the ocid daemon at ${this.base}: ${(e as Error).message}`,
+        undefined,
+      );
     }
-    const text = await resp.text();
-    if (!resp.ok) {
+    if (status < 200 || status >= 300) {
       const msg =
         text &&
         (() => {
@@ -50,7 +64,7 @@ export class OcidClient {
             return undefined;
           }
         })();
-      throw new OcidError(msg ?? `HTTP ${resp.status}`, resp.status);
+      throw new OcidError(msg ?? `HTTP ${status}`, status);
     }
     return JSON.parse(text) as T;
   }
@@ -58,7 +72,6 @@ export class OcidClient {
   private post<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>(path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
   }

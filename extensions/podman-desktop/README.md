@@ -16,6 +16,9 @@ The extension also hooks into Podman Desktop itself:
 
 - **Toasts** when a followed publisher ships a release, with a one-click
   *Pull* that runs `podman pull` as a task in the task widget.
+- **Auto-pull** (opt-in checkbox on the setup card, default off): instead of
+  the toast, new releases from followed peers are pulled into podman
+  automatically. Persisted as the `ocid.autoPull` setting.
 - **Push image to ocid peers** on the Images page context menu: pushes the
   image to the daemon's registry as a visible task — the daemon signs it and
   announces it, so peers following you replicate it automatically.
@@ -25,6 +28,12 @@ The extension also hooks into Podman Desktop itself:
   so push/pull need no `--tls-verify=false`. Rootful podman and podman
   machines don't read the user drop-in; those fall back to a TLS bypass
   automatically.
+- **TLS trust**: when the daemon serves HTTPS (`ocid.registryUrl` starts with
+  `https://`), the extension trusts the daemon's self-signed CA (found under
+  `~/.ocid/tls` or the bundled pod's home), talks to the control API over
+  https, and installs the CA into podman's `certs.d`
+  (`~/.config/containers/certs.d/<host:port>/ca.crt`) — so push/pull verify
+  the registry without `--tls-verify=false`.
 
 ## Status
 

@@ -24,6 +24,12 @@ interface Dependencies {
   notify: (message: string, error: boolean) => void;
   /** Fired once per release that a *followed* publisher shipped (not ours). */
   onFollowedRelease?: (publisher: string, name: string, tag: string) => void;
+  /** Whether auto-pull is enabled (read fresh at event time). */
+  autoPull?: () => boolean;
+  /** Pull a followed release into podman automatically (no toast). */
+  autoPullRelease?: (publisher: string, name: string, tag: string) => void;
+  /** Persist the auto-pull preference. */
+  setAutoPull?: (value: boolean) => Promise<void>;
   /** Host integration state for the setup card (polled alongside the daemon,
    *  so it stays fresh while the dashboard is open). */
   setup: () => Promise<SetupState>;
@@ -56,6 +62,7 @@ export class DashboardState {
       this.ring,
       () => this.push(),
       ev => this.onEvent(ev),
+      deps.client.ca,
     );
   }
 
@@ -127,7 +134,11 @@ export class DashboardState {
         const key = `${ev.publisher}/${ev.name}:${ev.tag}`;
         if (!this.notified.has(key)) {
           this.notified.add(key);
-          this.deps.onFollowedRelease?.(ev.publisher, ev.name, ev.tag);
+          if (this.deps.autoPull?.()) {
+            this.deps.autoPullRelease?.(ev.publisher, ev.name, ev.tag);
+          } else {
+            this.deps.onFollowedRelease?.(ev.publisher, ev.name, ev.tag);
+          }
         }
       }
     }
@@ -246,6 +257,14 @@ export class DashboardState {
           }
           await this.deps.startDaemon();
           detail = 'daemon starting — it will appear here within a few seconds';
+          break;
+        }
+        case 'set-auto-pull': {
+          if (!this.deps.setAutoPull) {
+            throw new Error('auto-pull is not available');
+          }
+          await this.deps.setAutoPull(action.value);
+          detail = `auto-pull ${action.value ? 'enabled' : 'disabled'}`;
           break;
         }
       }

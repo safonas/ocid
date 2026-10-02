@@ -22,6 +22,7 @@ import type { MenuImage } from './images';
 import { OcidClient } from './ocid-client';
 import { isRegistered, register, registryHost } from './registries';
 import { DashboardState, short } from './state';
+import { findCa, installCa } from './trust.ts';
 import type { SetupState, WebviewMessage } from './types';
 
 let state: DashboardState | undefined;
@@ -41,12 +42,17 @@ async function podman(args: string[], title: string): Promise<void> {
  *  every setup poll; drives the podmanRun TLS-bypass decision. */
 let registeredNow = false;
 
+/** Whether the daemon's CA is trusted in podman's certs.d (https daemons).
+ *  Refreshed by every setup poll alongside `registeredNow`. */
+let trustedNow = false;
+
 /** Run `podman pull/push` against the ocid registry. With the user-level
- *  registries.conf drop-in in place, rootless podman needs no flags; the
- *  bypass retry covers rootful podman and podman machines (which don't read
- *  the user drop-in) as well as unregistered setups. */
+ *  registries.conf drop-in (http) or the daemon's CA in certs.d (https) in
+ *  place, rootless podman needs no flags; the bypass retry covers rootful
+ *  podman and podman machines (which don't read the user config) as well as
+ *  unregistered setups. */
 async function podmanRun(args: string[], title: string): Promise<void> {
-  if (registeredNow) {
+  if (registeredNow || trustedNow) {
     try {
       await podman(args, title);
       return;
@@ -113,22 +119,31 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
   const url = api.configuration.getConfiguration('ocid').get<string>('registryUrl');
   const base = url ?? 'http://127.0.0.1:5050';
   const host = registryHost(base);
-  const client = new OcidClient(base);
+  const ca = await findCa();
+  const client = new OcidClient(base, ca);
 
   panel = api.window.createWebviewPanel('ocid', 'ocid', {
     localResourceRoots: [api.Uri.joinPath(extensionContext.extensionUri, 'media')],
   });
   panel.webview.html = await webviewHtml(extensionContext, panel);
 
-  /** Setup state for the dashboard card; also keeps `registeredNow` fresh. */
+  /** Setup state for the dashboard card; also keeps `registeredNow` and
+   *  `trustedNow` fresh. */
   const setup = async (): Promise<SetupState> => {
     const linux = process.platform === 'linux';
     registeredNow = linux && (await isRegistered(host).catch(() => false));
+    const tls = base.startsWith('https:');
+    trustedNow = false;
+    if (tls && ca) {
+      trustedNow = await installCa(host, ca).catch(() => false);
+    }
     return {
       platform: linux ? 'linux' : 'other',
       registryHost: host,
       registered: registeredNow,
       ocidPath: await ocidLookup(),
+      autoPull: api.configuration.getConfiguration('ocid').get<boolean>('autoPull') === true,
+      tls,
     };
   };
 
@@ -167,6 +182,16 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     setup,
     registerRegistry,
     startDaemon,
+    autoPull: () => api.configuration.getConfiguration('ocid').get<boolean>('autoPull') === true,
+    setAutoPull: async (value: boolean) => {
+      await api.configuration.getConfiguration('ocid').update('autoPull', value);
+    },
+    autoPullRelease: (publisher, name, tag) => {
+      const reference = `${host}/${publisher}/${name}:${tag}`;
+      podmanRun(['pull', reference], `ocid: auto-pulling ${name}:${tag}`)
+        .then(() => api.window.showInformationMessage(`Pulled ${name}:${tag} from ocid peers`))
+        .catch(e => api.window.showErrorMessage(`Auto-pull failed: ${runErrMsg(e)}`));
+    },
     onFollowedRelease: (publisher, name, tag) => {
       newFromFollowed++;
       const reference = `${host}/${publisher}/${name}:${tag}`;

@@ -55,7 +55,7 @@
     </p>
   </div>
 {:else}
-  {#if snap.setup && !snap.setup.registered}
+  {#if snap.setup && !snap.setup.tls && !snap.setup.registered}
     <SetupCard setup={snap.setup} daemon={true} />
   {/if}
   <nav class="tabs">
