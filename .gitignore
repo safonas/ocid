@@ -4,3 +4,4 @@
 /.dev
 /node_modules
 /.rustup
+.cortexkit/magic-context/

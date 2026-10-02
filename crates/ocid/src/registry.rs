@@ -110,9 +110,8 @@ pub async fn serve(
 async fn count_requests(State(app): State<App>, req: Request, next: Next) -> Response {
     let method = req.method().to_string();
     let route = metrics::route_family(req.uri().path());
-    // Read-only control polls (ocitop / the extension's 2s poller hitting
-    // status, peers and releases) would drown out every other line in the
-    // event log; the event stream never echoes itself either.
+    // Read-only control polls (ocitop / the extension's 2s poller) would
+    // drown out every other line in the event log.
     let path = (app.node.events.receiver_count() > 0
         && !(req.method() == Method::GET && req.uri().path().starts_with("/_ocid/")))
     .then(|| req.uri().path().to_string());

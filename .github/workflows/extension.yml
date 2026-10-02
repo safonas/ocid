@@ -3,9 +3,8 @@
 #
 # Testers install it in Podman Desktop via Settings → Extensions →
 # "Install from OCI image": ghcr.io/safonas/ocid-extension:testing.
-#
-# The artifact is arch-independent JS, but the manifest list still carries
-# amd64 + arm64 so pulls match on any host.
+# The artifact embeds a bundled daemon image (per arch, from the release
+# binaries compiled once by slsa.yml).
 
 name: extension
 
@@ -22,13 +21,16 @@ on:
     paths:
       - 'extensions/podman-desktop/**'
       - 'just/extension.just'
+      - 'Containerfile.daemon'
       - '.github/workflows/extension.yml'
 
 permissions:
   contents: read
 
 jobs:
-  # PRs: typecheck, unit tests, and an image build (no push).
+  # PRs: typecheck, unit tests, and an image build (no push). The daemon
+  # bundle is a placeholder here — no Rust build per PR; the COPY path is
+  # still exercised.
   check:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -48,7 +50,10 @@ jobs:
         run: just ext-test
 
       - name: Build the OCI artifact
-        run: just ext-image
+        run: |
+          mkdir -p extensions/podman-desktop/bin
+          tar -cf extensions/podman-desktop/bin/ocid-daemon.tar -T /dev/null
+          podman build -t ocid-extension:pr -f extensions/podman-desktop/Containerfile extensions/podman-desktop
 
   # Release/dispatch: build the multi-arch image from the tag and push it
   # under the version tag and the mutable :testing tag.
@@ -82,20 +87,39 @@ jobs:
           just ext-check
           just ext-test
 
+      # The daemon image is assembled from the release binary slsa.yml
+      # already compiled (its publish job dispatches this workflow after
+      # uploading it — no second Rust build; glibc is backward-compatible
+      # onto Wolfi's rolling base). Only `ocid` is bundled; host-side
+      # ocictl manages the pod daemon over https.
+      - name: Stage the release binary for the bundled daemon
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            gh release download "$TAG" --pattern "ocid-*-linux-${arch}.tar.gz" --output "ocid-${arch}.tar.gz" --clobber
+            mkdir -p "dist/daemon-${arch}"
+            tar -xzf "ocid-${arch}.tar.gz" -C "dist/daemon-${arch}"
+          done
+
       # The arm64 builder stage runs under emulation (the artifact itself is
-      # arch-independent JS).
+      # arch-independent JS; the daemon image just copies binaries in).
       - name: Register arm64 binfmt handlers
         run: docker run --privileged --rm "docker.io/tonistiigi/binfmt:qemu-v7.0.0@sha256:66e11bea77a5ea9d6f0fe79b57cd2b189b5d15b93a2bdb925be22949232e4e55" --install arm64
 
       # buildah (in a digest-pinned container — the same container-tooling
-      # stack the repo already uses) builds both platforms into one manifest
-      # list and pushes it under the version tag and :testing. The runner's
-      # own podman 4.x cannot produce the list: its buildah stamps
-      # scratch-stage configs with the host architecture and dedupes
-      # manifest entries by digest, so every podman path shipped a single
-      # amd64 entry (#56–#59). Kept inline in the workflow — not in the
-      # justfile — so the build recipe is stable against the tagged tree
-      # this job checks out (see #59).
+      # stack the repo already uses) builds, per arch: the daemon image from
+      # the staged binaries (Containerfile.daemon), exported as a tarball
+      # the extension artifact embeds, then the extension image itself;
+      # both platforms land in one manifest list pushed under the version
+      # tag and :testing. The runner's own podman 4.x cannot produce the
+      # list: its buildah stamps scratch-stage configs with the host
+      # architecture and dedupes manifest entries by digest, so every podman
+      # path shipped a single amd64 entry (#56–#59). Kept inline in the
+      # workflow — not in the justfile — so the build recipe is stable
+      # against the tagged tree this job checks out (see #59).
       - name: Build and push the multi-arch OCI artifact
         env:
           GHCR: ghcr.io/${{ github.repository_owner }}/ocid-extension
@@ -105,14 +129,21 @@ jobs:
           echo '${{ secrets.GITHUB_TOKEN }}' | podman login ghcr.io -u '${{ github.repository_owner }}' --password-stdin --authfile "$RUNNER_TEMP/ghcr-auth.json"
           docker run --rm --privileged \
             -e GHCR -e TAG \
-            -v "$PWD/extensions/podman-desktop":/src \
+            -v "$PWD":/src \
             -v "$RUNNER_TEMP/ghcr-auth.json":/auth.json:ro \
             "quay.io/buildah/stable:v1.43.4@sha256:7f69b7665f1bdfb41747b695a3c89752e1a5fe54f764a48e130e5b19caac4cde" \
             sh -c '
               set -euo pipefail
               cd /src
-              buildah bud --platform linux/amd64 --manifest "$GHCR:$TAG" -f Containerfile .
-              buildah bud --platform linux/arm64 --manifest "$GHCR:$TAG" -f Containerfile .
+              mkdir -p extensions/podman-desktop/bin
+              for arch in amd64 arm64; do
+                rm -rf dist/daemon-bin && mkdir -p dist/daemon-bin
+                cp dist/daemon-$arch/ocid dist/daemon-bin/
+                buildah bud --platform linux/$arch -t localhost/ocid-daemon:ext -f Containerfile.daemon .
+                rm -f extensions/podman-desktop/bin/ocid-daemon.tar
+                buildah push localhost/ocid-daemon:ext docker-archive:extensions/podman-desktop/bin/ocid-daemon.tar:localhost/ocid-daemon:ext
+                buildah bud --platform linux/$arch --manifest "$GHCR:$TAG" -f extensions/podman-desktop/Containerfile extensions/podman-desktop
+              done
               buildah manifest push --all --authfile /auth.json "$GHCR:$TAG" "docker://$GHCR:$TAG"
               buildah manifest push --all --authfile /auth.json "$GHCR:$TAG" "docker://$GHCR:testing"
             '

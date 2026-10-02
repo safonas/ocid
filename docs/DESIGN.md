@@ -366,6 +366,28 @@ of the control plane. Rules that keep it thin:
   `registries.conf` drop-in (`[[registry]] insecure = true`) on the host
   (Linux) or inside the podman machine with `host.containers.internal`
   (macOS); see the research notes on #15.
+  *Update (phase 3):* the daemon now serves TLS with a self-signed CA, so
+  the drop-in is replaced by installing the CA into podman's `certs.d`; the
+  extension bundles the daemon as a container image (assembled from the
+  release binaries) and runs it as a host-networked, quadlet-supervised
+  pod — details in `extensions/podman-desktop/README.md`.
+
+## Deployment & supervision
+
+The same daemon, supervised per channel — every packaged channel serves TLS
+on loopback and keeps its CA in `<its OCID_HOME>/tls`:
+
+| channel | runs as | supervised by | state home |
+|---|---|---|---|
+| `.deb`/`.rpm` | host service (DynamicUser, hardened) | systemd `ocid.service` — enable once with `systemctl enable --now ocid` | `/var/lib/ocid` |
+| Homebrew | user agent | `brew services start ocid` (launchd on macOS, systemd user unit on Linux) | `~/.ocid` |
+| PD extension | rootless container (host network) | systemd quadlet, `podman run --restart=always` fallback | `~/.local/share/ocid` |
+| container image | container | runtime restart policy | volume (`/data`) |
+| manual | foreground process | you | `~/.ocid` |
+
+The Homebrew formula template lives in `packaging/brew/ocid.rb` — the tap
+(`safonas/tap`) is a rendered copy kept in sync by `just packaging brew` and
+`just publish-release`.
 
 ## Trust boundaries
 

@@ -1,6 +1,11 @@
 //! HTTP client for the daemon's `/_ocid/` control API.
 
-use std::{fs, net::SocketAddr, path::Path, time::Duration};
+use std::{
+    fs,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::Path,
+    time::Duration,
+};
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde::de::DeserializeOwned;
@@ -14,9 +19,21 @@ pub struct Client {
     http: reqwest::Client,
 }
 
+/// Where to dial: a daemon listening on all interfaces (the container
+/// default) is dialed on loopback — `0.0.0.0` has no SAN, so TLS
+/// verification would fail.
+fn dial_addr(listen: SocketAddr) -> SocketAddr {
+    if listen.ip().is_unspecified() {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), listen.port())
+    } else {
+        listen
+    }
+}
+
 impl Client {
     pub fn new(listen: SocketAddr) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
+        let listen = dial_addr(listen);
         Self {
             base: format!("http://{listen}"),
             http: reqwest::Client::builder()
@@ -43,6 +60,7 @@ impl Client {
     /// fails verification, which is the honest signal).
     fn https(listen: SocketAddr, ca_cert: &Path) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
+        let listen = dial_addr(listen);
         let mut builder = reqwest::Client::builder().connect_timeout(Duration::from_secs(3));
         match fs::read(ca_cert)
             .map_err(anyhow::Error::from)
@@ -133,5 +151,19 @@ impl Client {
             bail!("event stream returned HTTP {}", resp.status());
         }
         Ok(resp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unspecified_listen_dials_loopback() {
+        // container default: OCID_LISTEN=0.0.0.0:5050
+        let c = Client::new("0.0.0.0:5050".parse().unwrap());
+        assert_eq!(c.base_url(), "http://127.0.0.1:5050");
+        let c = Client::new("127.0.0.1:5051".parse().unwrap());
+        assert_eq!(c.base_url(), "http://127.0.0.1:5051");
     }
 }

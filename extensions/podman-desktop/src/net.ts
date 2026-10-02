@@ -1,7 +1,5 @@
-// Minimal HTTP(S) layer over node:http/node:https. The global `fetch` cannot
-// be given a per-process CA at runtime, so the extension talks to the daemon
-// through this instead — which is also what lets a TLS daemon's self-signed
-// CA be trusted.
+// Minimal HTTP(S) layer over node:http/node:https — global `fetch` cannot be
+// given a per-process CA, which trusting a self-signed daemon CA requires.
 
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -37,7 +35,7 @@ function toResponse(res: IncomingMessage): Response {
   return { status: res.statusCode ?? 0, stream: res };
 }
 
-/** Full-body request (small JSON control API responses). */
+/** Full-body request (small JSON responses). */
 export async function requestText(
   url: URL,
   opts: NetOptions = {},
@@ -48,8 +46,8 @@ export async function requestText(
   return { status, body: Buffer.concat(chunks).toString('utf8') };
 }
 
-/** Streamed GET (the SSE event feed). `onChunk` receives raw bytes; resolve
- *  with the response status when the stream ends or `shouldStop()` is true. */
+/** Streamed GET (the SSE feed): `onChunk` receives raw bytes; stops early
+ *  when `shouldStop()` is true, resolving with the response status. */
 export async function requestStream(
   url: URL,
   opts: NetOptions,

@@ -235,6 +235,9 @@ ext-smoke: bin ext::smoke
 # publishes the multi-arch artifact via a pinned buildah container).
 [group('extension')]
 ext-image: ext::image
+# Shim: `just ext daemon-image` (bundled daemon image tarball for the artifact).
+[group('extension')]
+ext-daemon-image: ext::daemon-image
 # Shim: `just ext clean`.
 [group('extension')]
 ext-clean: ext::clean

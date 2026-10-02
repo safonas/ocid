@@ -4,6 +4,7 @@ name: Homebrew tap drift check
 # Fails loudly on mismatch; the fix is `just brew` + pushing the tap.
 # Deliberately check-only: no cross-repo write token required, and it does
 # not wait for the SLSA asset build (the source tarball exists at publish).
+# Pre-release tags are skipped — the tap only tracks released versions.
 
 on:
   release:
@@ -43,6 +44,9 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ steps.release.outputs.tag }}"
+          case "$tag" in
+            *-*) echo "tap intentionally does not track pre-release $tag"; exit 0 ;;
+          esac
           expected_url="https://github.com/safonas/ocid/archive/refs/tags/${tag}.tar.gz"
           expected_sha=$(curl -sSL --retry 3 "$expected_url" | sha256sum | cut -d' ' -f1)
           echo "release: $expected_url @ $expected_sha"

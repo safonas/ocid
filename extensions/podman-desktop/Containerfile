@@ -38,6 +38,11 @@ COPY --from=builder /app/package.json /extension/
 COPY --from=builder /app/icon.png /extension/
 COPY --from=builder /app/README.md /extension/
 
+# The bundled daemon image (per-arch OCI archive; built by `just ext
+# daemon-image` locally and by the extension workflow for each arch). The
+# extension `podman load`s it and runs the daemon as a pod.
+COPY bin/ocid-daemon.tar /extension/bin/ocid-daemon.tar
+
 LABEL org.opencontainers.image.title="ocid" \
       org.opencontainers.image.description="Peer-to-peer OCI image sharing: seed, follow and pull images from teammates over QUIC — no registry, no accounts." \
       org.opencontainers.image.vendor="safonas" \

@@ -6,6 +6,7 @@
 #   just ext test      unit tests for extension internals (no daemon)
 #   just ext smoke     run the extension client against a throwaway daemon
 #   just ext image     build the extension OCI artifact (scratch, for the catalog)
+#   just ext daemon-image   build the bundled daemon image tarball (bin/ocid-daemon.tar)
 #   just ext clean     remove build artifacts and dependencies
 #
 # Invoke from the repo root; `[no-cd]` keeps each recipe running there too
@@ -91,7 +92,9 @@ test:
 
 # Functional smoke test: run the extension client (OcidClient + SseWatcher)
 # against a throwaway daemon on 127.0.0.1:5070. Needs ./bin/ocid — the root
-# `ext-smoke` shim builds it first via `just bin`.
+# `ext-smoke` shim builds it first via `just bin`. mDNS is disabled on the
+# throwaway node so peers()/sync() assertions never depend on what else is
+# running on this host or LAN.
 [no-cd]
 smoke: deps
     #!/usr/bin/env bash
@@ -99,6 +102,8 @@ smoke: deps
     cd "{{ justfile_directory() }}"
     rm -rf .dev/ext-smoke-home
     mkdir -p .dev/ext-smoke-home
+    OCID_HOME="$PWD/.dev/ext-smoke-home" ./bin/ocictl init >/dev/null
+    sed -i 's/^mdns = .*/mdns = false/' .dev/ext-smoke-home/config.toml
     OCID_HOME="$PWD/.dev/ext-smoke-home" ./bin/ocid --listen 127.0.0.1:5070 --no-relay >/dev/null 2>&1 &
     pid=$!
     trap 'kill $pid 2>/dev/null || true; wait $pid 2>/dev/null || true' EXIT
@@ -108,12 +113,24 @@ smoke: deps
     done
     {{ _node_net }} node --experimental-strip-types scripts/smoke.mts
 
+# Build the bundled daemon image tarball (native arch) the extension
+# artifact embeds: the root Containerfile's `daemon` target, ocid-only —
+# the same image the release workflow assembles from the release binary.
+[no-cd]
+daemon-image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    {{ podman }} build -t localhost/ocid-daemon:ext --target daemon -f Containerfile .
+    mkdir -p {{ ext_dir }}/bin
+    {{ podman }} save localhost/ocid-daemon:ext -o {{ ext_dir }}/bin/ocid-daemon.tar
+
 # Build the extension OCI artifact (scratch base, per the publishing guide:
 # https://podman-desktop.io/docs/extensions/publish). Single-arch local
 # build for development; the extension workflow publishes the multi-arch
 # (amd64 + arm64) artifact via a digest-pinned buildah container.
 [no-cd]
-image:
+image: daemon-image
     {{ podman }} build -t {{ ext_image }} -f {{ ext_dir }}/Containerfile {{ ext_dir }}
 
 # Bump the extension's package.json to VERSION and sync package-lock.json

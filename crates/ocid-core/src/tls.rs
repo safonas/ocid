@@ -1,14 +1,10 @@
 //! Self-signed TLS material for the registry, generated on first start when
-//! `config.toml` says `tls = "auto"`.
+//! `config.toml` says `tls = "auto"`: a private CA (`ca.crt`/`ca.key`) signs
+//! the server certificate, and clients trust the registry via `tls/ca.crt`
+//! (podman's certs.d, curl's `--cacert`, ocictl/ocitop).
 //!
-//! One private CA (`ca.crt` / `ca.key`) signs the server certificate
-//! (`server.crt` / `server.key`). The CA is what clients install to trust
-//! the registry: podman's `certs.d`, curl's `--cacert`, and the ocid
-//! clients (`ocictl`, `ocitop`) all read `tls/ca.crt`.
-//!
-//! The set is regenerated wholesale when any file is missing or empty —
-//! private keys are not recoverable, so a partial set cannot be completed;
-//! clients that pinned the old CA must re-install the new one.
+//! The set is regenerated wholesale when any file is missing — private keys
+//! are not recoverable, so a partial set cannot be completed.
 
 use std::{
     fs,
@@ -29,9 +25,8 @@ pub const CA_KEY_FILE: &str = "ca.key";
 pub const SERVER_CERT_FILE: &str = "server.crt";
 pub const SERVER_KEY_FILE: &str = "server.key";
 
-/// Hostnames and IPs the server certificate answers to. Loopback covers
-/// same-host clients; `host.containers.internal` covers podman-machine VMs
-/// reaching a registry bound on the host.
+/// SANs the server certificate answers to. `host.containers.internal`
+/// covers podman-machine VMs reaching a registry bound on the host.
 const SERVER_SANS: &[&str] = &["localhost", "host.containers.internal", "127.0.0.1", "::1"];
 
 /// The node's TLS files (existing or freshly generated).
@@ -49,9 +44,8 @@ impl TlsMaterial {
     }
 }
 
-/// Return the node's TLS files, generating a fresh CA + server certificate
-/// if any of them is missing. Idempotent: an existing complete set is
-/// reused as-is.
+/// The node's TLS files, generating a fresh CA + server certificate if any
+/// file is missing; an existing complete set is reused as-is.
 pub fn ensure_material(dir: &Path) -> Result<TlsMaterial> {
     let material = TlsMaterial {
         ca_cert: dir.join(CA_CERT_FILE),
@@ -67,7 +61,6 @@ pub fn ensure_material(dir: &Path) -> Result<TlsMaterial> {
     }
     fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
 
-    // The CA signs the server certificate; it is the part clients install.
     let ca_key = KeyPair::generate()?;
     let ca_key_pem = ca_key.serialize_pem();
     let mut ca_params = CertificateParams::new(Vec::<String>::new())?;

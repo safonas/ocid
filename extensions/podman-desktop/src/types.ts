@@ -138,6 +138,8 @@ export interface SetupState {
   registered: boolean;
   /** Absolute path of the ocid binary, if one was found. */
   ocidPath?: string;
+  /** True when the extension ships a bundled daemon image (runs as a pod). */
+  bundled: boolean;
   /** Whether the registry is served over https (daemon tls = "auto"). */
   tls: boolean;
   /** Whether new followed releases are pulled into podman automatically. */

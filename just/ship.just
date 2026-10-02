@@ -72,6 +72,10 @@ cut-release VERSION: github-remote
 # publishes it as its last step (releases are immutable once published,
 # so the draft phase is required). Run AFTER the cut-release PR has been
 # merged (switches to an updated main itself).
+#
+# Pre-release versions (e.g. 0.7.0-rc.1) skip the Homebrew tap and are
+# published as GitHub prereleases (never Latest) — only released versions
+# are brewed and marked latest.
 [confirm("Publish the release? This tags, pushes the tag, creates a GitHub release and updates the tap.")]
 [no-cd]
 publish-release VERSION: github-remote
@@ -81,6 +85,9 @@ publish-release VERSION: github-remote
     ver="${ver#v}"
     [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "error: invalid semantic version '{{ VERSION }}'" >&2; exit 1; }
     tag="v$ver"
+    # Pre-release (0.7.0-rc.1): no tap bump, GitHub prerelease flag.
+    pre=false
+    [[ "$ver" == *-* ]] && pre=true
     git diff --quiet && git diff --cached --quiet || { echo "error: working tree has uncommitted changes" >&2; exit 1; }
     git checkout -q main
     git pull github main --ff-only
@@ -110,6 +117,9 @@ publish-release VERSION: github-remote
     else
         echo "warning: no rad remote configured, skipping Radicle mirror" >&2
     fi
+    if [ "$pre" = true ]; then
+        echo "-> pre-release $tag: skipping the Homebrew tap (only released versions are brewed)"
+    else
     archive_url="https://github.com/safonas/ocid/archive/refs/tags/${tag}.tar.gz"
     echo "Waiting for tag archive on GitHub..."
     for _ in $(seq 1 30); do
@@ -138,10 +148,10 @@ publish-release VERSION: github-remote
         https://github.com/*) git -C "$tap" remote set-url origin "git@github.com:${tap_origin#https://github.com/}" ;;
     esac
     formula="$tap/Formula/ocid.rb"
+    # The formula template (packaging/brew/ocid.rb) is the single source of
+    # truth — copy it wholesale and only fill url/sha256 for the tag.
+    cp packaging/brew/ocid.rb "$formula"
     sed -i -e "s|^  url .*|  url \"$archive_url\"|" -e "s|^  sha256 .*|  sha256 \"$archive_sha\"|" "$formula"
-    if ! grep -q 'crates/ocitop' "$formula"; then
-        sed -i -e '/crates\/ocictl/a\    system "cargo", "install", *std_cargo_args(path: "crates/ocitop")' "$formula"
-    fi
     if git -C "$tap" diff --quiet; then
         echo "Homebrew tap already at $tag."
     else
@@ -149,10 +159,13 @@ publish-release VERSION: github-remote
         git -C "$tap" push origin main
         echo "Homebrew tap updated."
     fi
+    fi
     if gh release view "$tag" >/dev/null 2>&1; then
         echo "-> draft release for '$tag' already exists (resuming)"
     else
-        gh release create "$tag" --draft --target main --title "$tag" --generate-notes
+        pre_flags=()
+        [ "$pre" = true ] && pre_flags=(--prerelease)
+        gh release create "$tag" --draft --target main --title "$tag" --generate-notes "${pre_flags[@]}"
         echo "Draft release: https://github.com/safonas/ocid/releases/tag/$tag"
     fi
     since=$(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M:%SZ)

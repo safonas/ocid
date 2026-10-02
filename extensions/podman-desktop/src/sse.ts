@@ -35,7 +35,7 @@ export class EventRing {
 export class SseWatcher {
   #stopped = false;
   private readonly base: string;
-  private readonly ca: string | undefined;
+  private readonly caProvider: () => string | undefined;
   private readonly ring: EventRing;
   private readonly onChange: () => void;
   private readonly onEvent: (event: DaemonEvent) => void;
@@ -45,10 +45,10 @@ export class SseWatcher {
     ring: EventRing,
     onChange: () => void,
     onEvent: (event: DaemonEvent) => void,
-    ca?: string,
+    ca?: string | (() => string | undefined),
   ) {
     this.base = base;
-    this.ca = ca;
+    this.caProvider = typeof ca === 'function' ? ca : () => ca;
     this.ring = ring;
     this.onChange = onChange;
     this.onEvent = onEvent;
@@ -80,7 +80,7 @@ export class SseWatcher {
     let buffer = '';
     const status = await requestStream(
       url,
-      { headers: { accept: 'text/event-stream' }, ca: this.ca },
+      { headers: { accept: 'text/event-stream' }, ca: this.caProvider() },
       chunk => {
         // Buffer raw text: a chunk may split an SSE frame or a UTF-8 char.
         buffer += decoder.decode(chunk, { stream: true });

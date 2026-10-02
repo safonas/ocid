@@ -26,3 +26,7 @@ rustls = { workspace = true, optional = true }
 [features]
 # HTTP client for the daemon control API (used by ocictl/ocitop, not the daemon).
 client = ["dep:reqwest", "dep:rustls"]
+
+[dev-dependencies]
+# Self-dependency so `cargo test` builds the client-gated module too.
+ocid-core = { path = ".", features = ["client"] }

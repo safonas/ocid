@@ -6,7 +6,15 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { caDir, caPath, installCa } from '../src/trust.ts';
+import { caCandidates, caDir, caPath, installCa } from '../src/trust.ts';
+
+test('caCandidates covers pod, system service and user homes, in order', () => {
+  const candidates = caCandidates();
+  assert.equal(candidates.length, 3);
+  assert.match(candidates[0]!, /\.local\/share\/ocid\/tls\/ca\.crt$/); // extension pod
+  assert.equal(candidates[1], '/var/lib/ocid/tls/ca.crt'); // deb/rpm systemd service
+  assert.match(candidates[2]!, /\.ocid\/tls\/ca\.crt$/); // manual daemon
+});
 
 const PEM = '-----BEGIN CERTIFICATE-----\nZm9v\n-----END CERTIFICATE-----\n';
 

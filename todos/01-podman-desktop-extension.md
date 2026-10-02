@@ -60,23 +60,30 @@ registry" flow with a trusted, bundled, self-supervised daemon.
   macOS via `podman machine ssh`; drop `--tls-verify=false` where trust is
   installed (keep the registries.conf drop-in + bypass for `tls = "off"`
   and rootful/machines).
-- [ ] **Daemon delivery**: bundle per-platform `ocid` binaries in the
-  extension artifact (cross-compile via zigbuild); no native Windows daemon
+- [x] **Daemon delivery**: the extension artifact embeds a per-arch daemon
+  image tarball; the release workflow assembles it from the release
+  binaries (`Containerfile.daemon` — no second Rust build; glibc is
+  backward-compatible onto Wolfi's rolling glibc). No native Windows daemon
   (WSL follow-up).
-- [ ] **Daemon as a pod**: build `localhost/ocid-daemon:ext` from the
-  bundled binary at install; run via quadlet drop-in
-  (`~/.config/containers/systemd/ocid.container`, host-networked Linux)
-  with `podman run --restart=always` fallback in machine VMs; `OCID_HOME`
-  bind-mounted at `~/.local/share/ocid` (`:Z`); `PATH` daemon stays the
-  fallback.
+- [x] **Daemon as a pod**: `podman load` the bundled image, run with
+  `--network host` (full p2p: QUIC + mDNS) + `--tls --listen
+  127.0.0.1:5050` + `OCID_HOME` bind-mounted at `~/.local/share/ocid`
+  (`:Z`, `--userns=keep-id:uid=1000`); systemd quadlet on Linux hosts with
+  a `podman run --restart=always` fallback; `PATH` daemon stays the last
+  resort.
 - [x] **Auto-pull**: `ocid.autoPull` checkbox in the onboarding card
   (default off) — on a followed `release_saved` event, pull into podman
   automatically instead of showing the manual Pull toast.
+- [x] **Supervision parity**: every packaged channel now serves TLS and has
+  a supervisor — deb/rpm `ocid.service` runs `--tls`, the Homebrew formula
+  gained a `service` block (template of record in `packaging/brew/ocid.rb`,
+  synced to the tap by `just packaging brew` / `just publish-release`), and
+  the extension auto-trusts the system service's CA (`/var/lib/ocid/tls`).
 
 ## Remaining
 
-- **macOS**: verify the pod + `machine ssh` trust install on a real machine
-  (best-effort until then; QUIC is relay-only behind the machine NAT).
+- **macOS**: verify the pod + trust install on a real podman machine
+  (best-effort until then; the PATH-daemon fallback covers it).
 - **Catalog submission**: PR to podman-desktop-catalog once feedback
   stabilizes.
 - Demo material: see [todos/14-website-demo.md](14-website-demo.md)

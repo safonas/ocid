@@ -6,7 +6,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ocid
+# --tls: every channel serves https (CA in /var/lib/ocid/tls), so podman
+# trusts the daemon via certs.d instead of --tls-verify=false.
+ExecStart=/usr/bin/ocid --tls
 Environment=OCID_HOME=/var/lib/ocid
 Environment=OCID_LISTEN=127.0.0.1:5050
 Environment=RUST_LOG=ocid=info,warn
