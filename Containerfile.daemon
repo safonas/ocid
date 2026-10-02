@@ -1,0 +1,43 @@
+# Daemon image assembled from *prebuilt* release binaries — used by the
+# extension workflow, which downloads the release tarballs (already compiled
+# by slsa.yml) and embeds this image in the Podman Desktop extension instead
+# of compiling the daemon a second time.
+#
+# The binaries are built on the ubuntu-latest runner (glibc 2.39) and run on
+# Wolfi's rolling glibc (always >= the runner's): glibc is
+# backward-compatible, so no recompile is needed. If the runner image ever
+# moves to a newer glibc than Wolfi carries, this breaks loudly (the daemon
+# container fails to start) — revisit then.
+#
+# The runtime stage of ./Containerfile builds the same image from source for
+# local development (`just ext daemon-image`); keep the two in sync.
+
+# syntax=docker/dockerfile:1.27@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
+
+# Wolfi rolling base (re-pin regularly for fresh security fixes).
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:7d567cad5eab29038705b01a900061fdae87ff19d23ae2b44c93ce691608c0ac
+
+FROM ${RUNTIME_IMAGE}
+
+RUN apk add --no-cache ca-certificates \
+  && addgroup -S -g 1000 ocid \
+  && adduser -S -D -u 1000 -G ocid -h /data ocid
+
+# The arch-specific release binaries, staged by the workflow into
+# dist/daemon-bin/ before `buildah bud` (build context = repo root).
+COPY dist/daemon-bin/ocid   /usr/local/bin/ocid
+COPY dist/daemon-bin/ocictl /usr/local/bin/ocictl
+COPY dist/daemon-bin/ocitop /usr/local/bin/ocitop
+
+USER ocid
+WORKDIR /data
+ENV OCID_HOME=/data
+# Inside a container the registry must bind all interfaces to be reachable via -p.
+ENV OCID_LISTEN=0.0.0.0:5050
+VOLUME ["/data"]
+
+# 5050: local OCI registry + control API + /metrics
+EXPOSE 5050/tcp
+
+# The daemon initialises an identity on first start if /data is empty.
+ENTRYPOINT ["/usr/local/bin/ocid"]

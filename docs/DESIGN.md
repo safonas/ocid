@@ -366,6 +366,11 @@ of the control plane. Rules that keep it thin:
   `registries.conf` drop-in (`[[registry]] insecure = true`) on the host
   (Linux) or inside the podman machine with `host.containers.internal`
   (macOS); see the research notes on #15.
+  *Update (phase 3):* the daemon now serves TLS with a self-signed CA, so
+  the drop-in is replaced by installing the CA into podman's `certs.d`; the
+  extension bundles the daemon as a container image (assembled from the
+  release binaries) and runs it as a host-networked, quadlet-supervised
+  pod — details in `extensions/podman-desktop/README.md`.
 
 ## Trust boundaries
 

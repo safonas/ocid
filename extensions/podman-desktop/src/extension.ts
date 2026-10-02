@@ -19,10 +19,11 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { isPodmanEngine, menuImageSource, ocidTarget } from './images';
 import type { MenuImage } from './images';
+import * as daemon from './daemon.ts';
 import { OcidClient } from './ocid-client';
 import { isRegistered, register, registryHost } from './registries';
 import { DashboardState, short } from './state';
-import { findCa, installCa } from './trust.ts';
+import { getCa, installCa, refreshCa } from './trust.ts';
 import type { SetupState, WebviewMessage } from './types';
 
 let state: DashboardState | undefined;
@@ -117,10 +118,10 @@ async function ocidLookup(): Promise<string | undefined> {
 
 export async function activate(extensionContext: api.ExtensionContext): Promise<void> {
   const url = api.configuration.getConfiguration('ocid').get<string>('registryUrl');
-  const base = url ?? 'http://127.0.0.1:5050';
+  const base = url ?? 'https://127.0.0.1:5050';
   const host = registryHost(base);
-  const ca = await findCa();
-  const client = new OcidClient(base, ca);
+  await refreshCa();
+  const client = new OcidClient(base, () => getCa());
 
   panel = api.window.createWebviewPanel('ocid', 'ocid', {
     localResourceRoots: [api.Uri.joinPath(extensionContext.extensionUri, 'media')],
@@ -128,20 +129,24 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
   panel.webview.html = await webviewHtml(extensionContext, panel);
 
   /** Setup state for the dashboard card; also keeps `registeredNow` and
-   *  `trustedNow` fresh. */
+   *  `trustedNow` fresh, and re-reads the daemon's CA (which does not exist
+   *  until the daemon first generates it). */
+  const extensionRoot = extensionContext.extensionUri.fsPath;
   const setup = async (): Promise<SetupState> => {
     const linux = process.platform === 'linux';
     registeredNow = linux && (await isRegistered(host).catch(() => false));
     const tls = base.startsWith('https:');
+    await refreshCa();
     trustedNow = false;
-    if (tls && ca) {
-      trustedNow = await installCa(host, ca).catch(() => false);
+    if (tls && getCa()) {
+      trustedNow = await installCa(host, getCa()!).catch(() => false);
     }
     return {
       platform: linux ? 'linux' : 'other',
       registryHost: host,
       registered: registeredNow,
       ocidPath: await ocidLookup(),
+      bundled: await daemon.hasBundledDaemon(extensionRoot),
       autoPull: api.configuration.getConfiguration('ocid').get<boolean>('autoPull') === true,
       tls,
     };
@@ -155,15 +160,25 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     await register(host);
   };
 
-  /** Start the daemon detached; logs go to the extension's storage dir. */
+  /** Start the daemon: prefer the bundled pod (TLS, self-contained); fall
+   *  back to a detached `ocid` on PATH (also TLS) when no bundle ships or
+   *  the pod fails to start. */
   const startDaemon = async (): Promise<void> => {
+    if (await daemon.hasBundledDaemon(extensionRoot)) {
+      try {
+        await daemon.startDaemonPod(extensionRoot);
+        return;
+      } catch (e) {
+        if (!(await ocidLookup())) throw e; // nothing to fall back to
+      }
+    }
     const bin = await ocidLookup();
     if (!bin) throw new Error('no ocid binary found — install it first (see the setup card)');
     const logDir = path.join(extensionContext.storagePath, 'daemon');
     await mkdir(logDir, { recursive: true });
     const out = await open(path.join(logDir, 'ocid.log'), 'a');
     try {
-      const child = spawn(bin, [], { detached: true, stdio: ['ignore', out.fd, out.fd] });
+      const child = spawn(bin, ['--tls'], { detached: true, stdio: ['ignore', out.fd, out.fd] });
       child.unref();
     } finally {
       await out.close();

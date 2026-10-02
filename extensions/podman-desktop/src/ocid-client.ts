@@ -27,11 +27,18 @@ export class OcidError extends Error {
 
 export class OcidClient {
   readonly base: string;
-  readonly ca: string | undefined;
+  private readonly caProvider: () => string | undefined;
 
-  constructor(base: string, ca?: string) {
+  constructor(base: string, ca?: string | (() => string | undefined)) {
     this.base = base;
-    this.ca = ca;
+    this.caProvider =
+      typeof ca === 'function' ? ca : () => ca;
+  }
+
+  /** The CA to trust for https, resolved lazily (the daemon generates it on
+   *  first start, so it is not always available at construction time). */
+  ca(): string | undefined {
+    return this.caProvider();
   }
 
   private async request<T>(
@@ -45,7 +52,7 @@ export class OcidClient {
         method: init?.method,
         headers: init?.method === 'POST' ? { 'content-type': 'application/json' } : undefined,
         body: init?.body,
-        ca: this.ca,
+        ca: this.ca(),
       }));
     } catch (e) {
       throw new OcidError(

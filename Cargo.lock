@@ -2939,6 +2939,7 @@ dependencies = [
  "dirs",
  "hex",
  "iroh-base",
+ "ocid-core",
  "rcgen",
  "reqwest",
  "rustls",

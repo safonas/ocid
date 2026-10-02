@@ -25,7 +25,7 @@
       "properties": {
         "ocid.registryUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:5050",
+          "default": "https://127.0.0.1:5050",
           "description": "Base URL of the ocid daemon's registry and control API."
         },
         "ocid.autoPull": {

@@ -1,0 +1,8 @@
+# Keep the OCI-artifact build context lean: the builder stage compiles
+# src/ + frontend/ itself; only metadata and the bundled daemon tarball
+# are COPYied from the context.
+node_modules
+media
+dist
+.svelte-check
+*.log

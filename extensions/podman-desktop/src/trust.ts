@@ -37,6 +37,20 @@ export async function findCa(): Promise<string | undefined> {
   return undefined;
 }
 
+let cachedCa: string | undefined;
+
+/** Re-read the CA from disk. Called on activation and on the 2s setup poll,
+ *  so the client trusts a just-started daemon without a restart (the CA does
+ *  not exist until the daemon first generates it). */
+export async function refreshCa(): Promise<void> {
+  cachedCa = await findCa();
+}
+
+/** The last-known CA, or undefined before the daemon has generated one. */
+export function getCa(): string | undefined {
+  return cachedCa;
+}
+
 /** certs.d directory for one registry host:port. */
 export function caDir(host: string, home: string = configHome()): string {
   return path.join(home, 'containers', 'certs.d', host);

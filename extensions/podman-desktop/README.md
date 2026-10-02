@@ -22,37 +22,38 @@ The extension also hooks into Podman Desktop itself:
 - **Push image to ocid peers** on the Images page context menu: pushes the
   image to the daemon's registry as a visible task — the daemon signs it and
   announces it, so peers following you replicate it automatically.
-- **Setup card**: starts the daemon (found on `PATH` or in common install
-  locations) and registers `127.0.0.1:5050` with podman as an insecure
-  registry (`~/.config/containers/registries.conf.d/100-ocid.conf` on Linux),
-  so push/pull need no `--tls-verify=false`. Rootful podman and podman
-  machines don't read the user drop-in; those fall back to a TLS bypass
-  automatically.
-- **TLS trust**: when the daemon serves HTTPS (`ocid.registryUrl` starts with
-  `https://`), the extension trusts the daemon's self-signed CA (found under
-  `~/.ocid/tls` or the bundled pod's home), talks to the control API over
-  https, and installs the CA into podman's `certs.d`
+- **Setup card**: starts the daemon and makes podman trust it. The bundled
+  daemon image (embedded in the OCI artifact, per arch) is loaded and run as
+  a pod — systemd quadlet on Linux hosts, `podman run --restart=always`
+  fallback elsewhere — serving HTTPS on `127.0.0.1:5050` with its state
+  bind-mounted at `~/.local/share/ocid`. When no bundle ships (PR builds,
+  folder dev without `bin/ocid-daemon.tar`), it falls back to starting an
+  `ocid` found on `PATH` (also with `--tls`).
+- **TLS trust**: the daemon serves HTTPS (`ocid.registryUrl` defaults to
+  `https://127.0.0.1:5050`); the extension trusts the daemon's self-signed
+  CA (from the pod's `~/.local/share/ocid/tls` or `~/.ocid/tls`), talks to
+  the control API over https, and installs the CA into podman's `certs.d`
   (`~/.config/containers/certs.d/<host:port>/ca.crt`) — so push/pull verify
-  the registry without `--tls-verify=false`.
+  the registry without `--tls-verify=false`. Plain-http daemons keep the
+  registries.conf drop-in path; rootful podman and podman machines that
+  read neither fall back to a TLS bypass automatically.
 
 ## Status
 
-Phase 2 of the onboarding flow is in progress (see
+Phase 3 (bundled TLS daemon as a pod) is in progress (see
 [#15](https://github.com/safonas/ocid/issues/15)). Supported: Linux with a
-rootless podman connection. Known gaps: automatic registration is not
-implemented on macOS yet (TLS bypass covers it), and the daemon is not bundled
-with the extension — it must be installed separately.
+rootless podman connection. Known gaps: macOS runs the pod untested (the
+fallback PATH daemon works), and the bundled image is only produced by the
+release workflow — PR/folder builds fall back to a PATH daemon.
 
 ## Install (testing round)
 
-1. Install the daemon on this machine — Homebrew
-   (`brew install safonas/tap/ocid`) or a release bundle (contains `ocid`,
-   `ocictl`, `ocitop`).
-2. In Podman Desktop: **Settings → Extensions → Install from OCI image** →
+1. In Podman Desktop: **Settings → Extensions → Install from OCI image** →
    `ghcr.io/safonas/ocid-extension:testing` (versioned tags track releases).
-3. Open the ocid dashboard. If the daemon is not running, the setup card
-   starts it; then register the registry with podman from the same card.
-4. To try the peer flow, repeat on a second machine (or a second
+2. Open the ocid dashboard and click **Start ocid daemon**: the bundled image
+   is loaded and run as a pod (TLS on `127.0.0.1:5050`, trusted by podman via
+   certs.d). No separate daemon install needed.
+3. To try the peer flow, repeat on a second machine (or a second
    `OCID_HOME`) and paste one node's ticket into the other's dashboard.
 
 ## Design notes
