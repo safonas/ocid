@@ -18,8 +18,10 @@
       .catch(() => (qrSvg = ''));
   });
 
-  async function copy(): Promise<void> {
-    await navigator.clipboard.writeText(ticket);
+  function copy(): void {
+    // navigator.clipboard is unavailable in PD webviews; the backend
+    // performs the copy through the extension API.
+    sendAction({ kind: 'copy', text: ticket });
     copied = true;
     setTimeout(() => (copied = false), 1500);
   }
@@ -33,7 +35,7 @@
       LAN machine), then follow your publisher to replicate your images.
     </p>
     <textarea class="mono" readonly rows="3" value={ticket}></textarea>
-    <Button onclick={() => void copy()}>
+    <Button onclick={copy}>
       {copied ? 'Copied!' : 'Copy ticket'}
     </Button>
   </div>

@@ -211,6 +211,7 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
         .then(choice => choice === ok),
     notify: (message, error) =>
       error ? api.window.showErrorMessage(message) : api.window.showInformationMessage(message),
+    copyText: text => api.env.clipboard.writeText(text),
     setup,
     registerRegistry,
     startDaemon,
