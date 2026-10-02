@@ -7,6 +7,7 @@
 #   just ext smoke     run the extension client against a throwaway daemon
 #   just ext image     build the extension OCI artifact (scratch, for the catalog)
 #   just ext daemon-image   build the bundled daemon image tarball (bin/ocid-daemon.tar)
+#   just ext folder    assemble a folder for PD's local-folder extension install
 #   just ext clean     remove build artifacts and dependencies
 #
 # Invoke from the repo root; `[no-cd]` keeps each recipe running there too
@@ -125,6 +126,24 @@ daemon-image:
     mkdir -p {{ ext_dir }}/bin
     rm -f {{ ext_dir }}/bin/ocid-daemon.tar
     {{ podman }} save localhost/ocid-daemon:ext -o {{ ext_dir }}/bin/ocid-daemon.tar
+
+# Assemble a folder for PD's "Install extension from local folder"
+# (Settings → Extensions): the same payload the OCI artifact carries —
+# package.json, dist/, media/, icon.png, README.md and the bundled daemon
+# tarball. PD registers it as a development extension and live-reloads
+# dist/ changes on re-toggle. Usage: just ext-folder [out-dir].
+[no-cd]
+folder out=".dev/ext-folder": build daemon-image
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    rm -rf "{{ out }}"
+    mkdir -p "{{ out }}/bin"
+    cp {{ ext_dir }}/package.json {{ ext_dir }}/README.md {{ ext_dir }}/icon.png "{{ out }}/"
+    cp -r {{ ext_dir }}/dist {{ ext_dir }}/media "{{ out }}/"
+    cp {{ ext_dir }}/bin/ocid-daemon.tar "{{ out }}/bin/"
+    du -sh "{{ out }}"
+    echo "PD: Settings → Extensions → Install extension from local folder → {{ out }}"
 
 # Build the extension OCI artifact (scratch base, per the publishing guide:
 # https://podman-desktop.io/docs/extensions/publish). Single-arch local

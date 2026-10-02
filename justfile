@@ -20,6 +20,8 @@
 #   just ext-test     unit tests for extension internals (no daemon)
 #   just ext-smoke    run the extension client against a throwaway daemon
 #   just ext-image    build the extension OCI artifact (for the catalog)
+#   just ext-daemon-image   build the bundled daemon tarball (bin/ocid-daemon.tar)
+#   just ext-folder   assemble a folder for PD's local-folder extension install
 #   just ci           fmt-check + clippy + test + e2e
 #   just hooks        install git hooks via pre-commit (fmt/clippy/just-fmt on commit, tests on push)
 #   just image        build the runtime container image (Containerfile)
@@ -238,6 +240,9 @@ ext-image: ext::image
 # Shim: `just ext daemon-image` (bundled daemon image tarball for the artifact).
 [group('extension')]
 ext-daemon-image: ext::daemon-image
+# Shim: `just ext folder` (assemble a folder for PD's local-folder install).
+[group('extension')]
+ext-folder: ext::folder
 # Shim: `just ext clean`.
 [group('extension')]
 ext-clean: ext::clean
