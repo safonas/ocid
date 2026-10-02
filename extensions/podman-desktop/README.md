@@ -28,6 +28,12 @@ The extension also hooks into Podman Desktop itself:
   so push/pull need no `--tls-verify=false`. Rootful podman and podman
   machines don't read the user drop-in; those fall back to a TLS bypass
   automatically.
+- **TLS trust**: when the daemon serves HTTPS (`ocid.registryUrl` starts with
+  `https://`), the extension trusts the daemon's self-signed CA (found under
+  `~/.ocid/tls` or the bundled pod's home), talks to the control API over
+  https, and installs the CA into podman's `certs.d`
+  (`~/.config/containers/certs.d/<host:port>/ca.crt`) — so push/pull verify
+  the registry without `--tls-verify=false`.
 
 ## Status
 

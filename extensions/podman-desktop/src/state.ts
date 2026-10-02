@@ -62,6 +62,7 @@ export class DashboardState {
       this.ring,
       () => this.push(),
       ev => this.onEvent(ev),
+      deps.client.ca,
     );
   }
 
