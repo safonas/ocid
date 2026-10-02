@@ -34,10 +34,13 @@
   published release; `just cut-release` bumps the extension's package.json
   in lockstep with Cargo.toml.
 
-## Phase 3 — TLS + self-contained daemon (in progress, targets v0.7.0)
+## Phase 3 — TLS + self-contained daemon (shipped in v0.7.0-rc.1)
 
 Replace the "install the daemon yourself, then register an insecure http
-registry" flow with a trusted, bundled, self-supervised daemon.
+registry" flow with a trusted, bundled, self-supervised daemon. PRs #69
+(daemon TLS + poll filter), #70 (auto-pull), #71 (TLS trust), #73
+(bundled pod, supervision parity, ocid-only trim, pre-release-aware
+publishing).
 
 ### Daemon TLS (`ocid` + `ocid-core`) — PR 1
 - [x] `config.toml`: `tls = "off" | "auto"` (default `off`, so dev/e2e are
@@ -82,6 +85,9 @@ registry" flow with a trusted, bundled, self-supervised daemon.
 
 ## Remaining
 
+- **RC testing round**: install `ghcr.io/safonas/ocid-extension:v0.7.0-rc.1`
+  on a second machine and run the two-node flow (push → ticket → follow →
+  auto-pull) from the GUI.
 - **macOS**: verify the pod + trust install on a real podman machine
   (best-effort until then; the PATH-daemon fallback covers it).
 - **Catalog submission**: PR to podman-desktop-catalog once feedback
