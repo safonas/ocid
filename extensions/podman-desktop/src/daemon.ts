@@ -24,15 +24,6 @@ async function podman(args: string[]): Promise<api.RunResult> {
   return api.process.exec('podman', args);
 }
 
-async function imageExists(): Promise<boolean> {
-  try {
-    await podman(['image', 'exists', DAEMON_IMAGE]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function isDaemonRunning(): Promise<boolean> {
   try {
     const out = await podman([
@@ -148,9 +139,10 @@ export async function isDaemonPodOurs(): Promise<boolean> {
  *  outlives the extension. Otherwise the container has no supervisor —
  *  deactivate() stops it, making the pod's lifetime the extension's. */
 export async function startDaemonPod(extensionRoot: string, persistent: boolean): Promise<void> {
-  if (!(await imageExists())) {
-    await podman(['load', '-i', tarballPath(extensionRoot)]);
-  }
+  // Always (re)load the bundled tarball: the tag is version-less
+  // (localhost/ocid-daemon:ext), so skipping the load would keep running a
+  // daemon image bundled by an older extension version.
+  await podman(['load', '-i', tarballPath(extensionRoot)]);
   if (await isDaemonRunning()) return;
   await mkdir(daemonHome(), { recursive: true });
   // clear a stopped container from a previous run
