@@ -66,8 +66,9 @@ pkg:
 # Verify the Homebrew tap formula syntax and structure via brew audit.
 # Syncs safonas/tap, copies the formula template (packaging/brew/ocid.rb —
 # the single source of truth) into it with url/sha256 updated to match
-# Cargo.toml, and audits the result. (Local compile/install is testable
-# via just brew-local.)
+# Cargo.toml, and audits the result. Pre-release versions are skipped:
+# the tap only tracks released versions. (Local compile/install is
+# testable via just brew-local.)
 [no-cd]
 brew:
     #!/usr/bin/env bash
@@ -81,6 +82,10 @@ brew:
         exit 1
     fi
     ver=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+    if [[ "$ver" == *-* ]]; then
+        echo "-> $ver is a pre-release; the tap only tracks released versions (nothing to audit)"
+        exit 0
+    fi
     url="https://github.com/safonas/ocid/archive/refs/tags/v$ver.tar.gz"
     git -C "$tap" fetch -q origin && git -C "$tap" checkout -q main && git -C "$tap" reset -q --hard origin/main
     if [ "$(curl -sSL -o /dev/null -w '%{http_code}' "$url")" != "200" ]; then
