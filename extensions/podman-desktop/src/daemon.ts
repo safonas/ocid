@@ -1,6 +1,8 @@
-// The bundled daemon as a podman container: quadlet-supervised where a user
-// systemd session exists, `podman run --restart=always` fallback otherwise.
-// The PATH-daemon fallback lives in extension.ts.
+// The bundled daemon as a podman container. Default: the pod's lifetime is
+// the extension's (deactivate stops it). ocid.keepDaemonAlive opts into a
+// persistent daemon — quadlet-supervised where a user systemd session
+// exists, `podman run --restart=always` fallback otherwise. The PATH-daemon
+// fallback lives in extension.ts.
 
 import * as api from '@podman-desktop/api';
 import { access, mkdir, rm, writeFile } from 'node:fs/promises';
@@ -115,14 +117,37 @@ async function startViaQuadlet(): Promise<boolean> {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     return await isDaemonRunning();
+  } catch (e) {
+    // Expected under Flatpak-Podman-Desktop, where systemctl may not reach
+    // the user's systemd manager — the podman-run fallback below supervises.
+    console.warn('ocid: quadlet start failed, falling back to podman run:', (e as Error).message);
+    return false;
+  }
+}
+
+/** True when the `ocid` container is running the bundled daemon image —
+ *  i.e. a pod this extension is responsible for stopping on disable. */
+export async function isDaemonPodOurs(): Promise<boolean> {
+  try {
+    const out = await podman([
+      'container',
+      'inspect',
+      '--format',
+      '{{.ImageName}}',
+      CONTAINER_NAME,
+    ]);
+    return out.stdout.trim() === DAEMON_IMAGE;
   } catch {
     return false;
   }
 }
 
-/** Load the bundled image (idempotent) and start the pod — OCID_HOME under
- *  daemonHome(), so the CA lands where trust.ts reads it. */
-export async function startDaemonPod(extensionRoot: string): Promise<void> {
+/** Start the bundled image's container. `persistent` (the advanced
+ *  ocid.keepDaemonAlive mode) supervises it via a systemd quadlet, or a
+ *  restarted container where no user systemd session exists, so it
+ *  outlives the extension. Otherwise the container has no supervisor —
+ *  deactivate() stops it, making the pod's lifetime the extension's. */
+export async function startDaemonPod(extensionRoot: string, persistent: boolean): Promise<void> {
   if (!(await imageExists())) {
     await podman(['load', '-i', tarballPath(extensionRoot)]);
   }
@@ -130,8 +155,9 @@ export async function startDaemonPod(extensionRoot: string): Promise<void> {
   await mkdir(daemonHome(), { recursive: true });
   // clear a stopped container from a previous run
   await podman(['rm', '-f', CONTAINER_NAME]).catch(() => undefined);
-  if (await startViaQuadlet()) return;
-  await podman(['run', '-d', '--name', CONTAINER_NAME, '--restart', 'always', ...RUN_ARGS]);
+  if (persistent && (await startViaQuadlet())) return;
+  const supervision = persistent ? ['--restart', 'always'] : [];
+  await podman(['run', '-d', '--name', CONTAINER_NAME, ...supervision, ...RUN_ARGS]);
 }
 
 export async function stopDaemonPod(): Promise<void> {

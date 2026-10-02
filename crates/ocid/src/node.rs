@@ -360,6 +360,19 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
         });
     }
 
+    // In containers the daemon runs as PID 1, where the kernel applies no
+    // default signal actions: an unhandled SIGTERM is silently ignored and
+    // the container needs a 10s SIGKILL to stop. Handle both signals.
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut term = signal(SignalKind::terminate())?;
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
     tokio::signal::ctrl_c().await?;
     eprintln!("shutting down");
     router.shutdown().await.ok();

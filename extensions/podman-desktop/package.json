@@ -32,6 +32,11 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically pull new releases from followed peers into podman."
+        },
+        "ocid.keepDaemonAlive": {
+          "type": "boolean",
+          "default": false,
+          "description": "Advanced: keep the bundled daemon pod running when the extension is disabled or Podman Desktop exits. By default the pod stops with the extension."
         }
       }
     },

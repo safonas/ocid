@@ -97,7 +97,7 @@ export class DashboardState {
         events: this.ring.snapshot(),
         transfers: this.transfers.list(),
         setup,
-        error: this.snapshot.error,
+        error: undefined,
       };
       this.push();
     } catch {

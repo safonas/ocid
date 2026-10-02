@@ -24,11 +24,17 @@ The extension also hooks into Podman Desktop itself:
   announces it, so peers following you replicate it automatically.
 - **Setup card**: starts the daemon and makes podman trust it. The bundled
   daemon image (embedded in the OCI artifact, per arch) is loaded and run as
-  a pod — systemd quadlet on Linux hosts, `podman run --restart=always`
-  fallback elsewhere — serving HTTPS on `127.0.0.1:5050` with its state
-  bind-mounted at `~/.local/share/ocid`. When no bundle ships (PR builds,
-  folder dev without `bin/ocid-daemon.tar`), it falls back to starting an
-  `ocid` found on `PATH` (also with `--tls`).
+  a pod serving HTTPS on `127.0.0.1:5050` with its state bind-mounted at
+  `~/.local/share/ocid`. The pod's lifetime is the extension's: it stops on
+  disable/removal of the extension (or Podman Desktop exit) — the advanced
+  `ocid.keepDaemonAlive` setting opts into a daemon that outlives it
+  (systemd quadlet on Linux hosts, `podman run --restart=always` fallback
+  elsewhere). When no bundle ships (PR builds, folder dev without
+  `bin/ocid-daemon.tar`), it falls back to starting an `ocid` found on
+  `PATH` (also with `--tls`). Config meant for the host (certs.d,
+  registries drop-in, quadlet) targets the real `~/.config` even when
+  Podman Desktop runs sandboxed as a Flatpak — the host podman it spawns
+  reads that, not the sandbox.
 - **TLS trust**: the daemon serves HTTPS (`ocid.registryUrl` defaults to
   `https://127.0.0.1:5050`); the extension trusts the daemon's self-signed
   CA (from the pod's `~/.local/share/ocid/tls`, the deb/rpm system
