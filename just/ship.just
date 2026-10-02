@@ -138,10 +138,10 @@ publish-release VERSION: github-remote
         https://github.com/*) git -C "$tap" remote set-url origin "git@github.com:${tap_origin#https://github.com/}" ;;
     esac
     formula="$tap/Formula/ocid.rb"
+    # The formula template (packaging/brew/ocid.rb) is the single source of
+    # truth — copy it wholesale and only fill url/sha256 for the tag.
+    cp packaging/brew/ocid.rb "$formula"
     sed -i -e "s|^  url .*|  url \"$archive_url\"|" -e "s|^  sha256 .*|  sha256 \"$archive_sha\"|" "$formula"
-    if ! grep -q 'crates/ocitop' "$formula"; then
-        sed -i -e '/crates\/ocictl/a\    system "cargo", "install", *std_cargo_args(path: "crates/ocitop")' "$formula"
-    fi
     if git -C "$tap" diff --quiet; then
         echo "Homebrew tap already at $tag."
     else

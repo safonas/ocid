@@ -15,11 +15,14 @@ import { configHome } from './registries.ts';
 const CA_FILE = 'ca.crt';
 
 /** Candidate OCID_HOME TLS dirs, in preference order: the extension-managed
- *  pod home first, then the default `~/.ocid`. */
-function caCandidates(): string[] {
+ *  pod home, the deb/rpm system service's StateDirectory (/var/lib/ocid —
+ *  its tls/ca.crt is world-readable even though the key is not), then the
+ *  default `~/.ocid`. */
+export function caCandidates(): string[] {
   const home = homedir();
   return [
     path.join(home, '.local', 'share', 'ocid', 'tls', CA_FILE),
+    '/var/lib/ocid/tls/ca.crt',
     path.join(home, '.ocid', 'tls', CA_FILE),
   ];
 }

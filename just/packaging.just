@@ -64,8 +64,10 @@ pkg:
     ls dist/
 
 # Verify the Homebrew tap formula syntax and structure via brew audit.
-# Syncs safonas/tap, updates url/sha256/crates to match Cargo.toml,
-# and audits the formula. (Local compile/install is testable via just brew-local).
+# Syncs safonas/tap, copies the formula template (packaging/brew/ocid.rb —
+# the single source of truth) into it with url/sha256 updated to match
+# Cargo.toml, and audits the result. (Local compile/install is testable
+# via just brew-local.)
 [no-cd]
 brew:
     #!/usr/bin/env bash
@@ -86,10 +88,8 @@ brew:
         exit 1
     fi
     sha=$(curl -sSL "$url" | sha256sum | cut -d' ' -f1)
+    cp packaging/brew/ocid.rb "$tap/Formula/ocid.rb"
     sed -i -e "s|^  url .*|  url \"$url\"|" -e "s|^  sha256 .*|  sha256 \"$sha\"|" "$tap/Formula/ocid.rb"
-    if ! grep -q 'crates/ocitop' "$tap/Formula/ocid.rb"; then
-        sed -i -e '/crates\/ocictl/a\    system "cargo", "install", *std_cargo_args(path: "crates/ocitop")' "$tap/Formula/ocid.rb"
-    fi
     git -C "$tap" --no-pager diff -- Formula/ocid.rb || true
     brew audit --formula safonas/tap/ocid
     echo "-> safonas/tap/ocid formula valid"

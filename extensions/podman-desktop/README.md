@@ -31,8 +31,9 @@ The extension also hooks into Podman Desktop itself:
   `ocid` found on `PATH` (also with `--tls`).
 - **TLS trust**: the daemon serves HTTPS (`ocid.registryUrl` defaults to
   `https://127.0.0.1:5050`); the extension trusts the daemon's self-signed
-  CA (from the pod's `~/.local/share/ocid/tls` or `~/.ocid/tls`), talks to
-  the control API over https, and installs the CA into podman's `certs.d`
+  CA (from the pod's `~/.local/share/ocid/tls`, the deb/rpm system
+  service's `/var/lib/ocid/tls`, or `~/.ocid/tls`), talks to the
+  control API over https, and installs the CA into podman's `certs.d`
   (`~/.config/containers/certs.d/<host:port>/ca.crt`) — so push/pull verify
   the registry without `--tls-verify=false`. Plain-http daemons keep the
   registries.conf drop-in path; rootful podman and podman machines that

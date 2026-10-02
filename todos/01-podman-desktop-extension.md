@@ -74,6 +74,11 @@ registry" flow with a trusted, bundled, self-supervised daemon.
 - [x] **Auto-pull**: `ocid.autoPull` checkbox in the onboarding card
   (default off) — on a followed `release_saved` event, pull into podman
   automatically instead of showing the manual Pull toast.
+- [x] **Supervision parity**: every packaged channel now serves TLS and has
+  a supervisor — deb/rpm `ocid.service` runs `--tls`, the Homebrew formula
+  gained a `service` block (template of record in `packaging/brew/ocid.rb`,
+  synced to the tap by `just packaging brew` / `just publish-release`), and
+  the extension auto-trusts the system service's CA (`/var/lib/ocid/tls`).
 
 ## Remaining
 
