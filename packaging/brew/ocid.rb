@@ -1,7 +1,6 @@
 # Homebrew formula for ocid — the single source of truth. `just packaging
-# brew` (audit) and `just ship publish-release` (tap bump) copy this file
-# into the tap (Formula/ocid.rb) and rewrite url/sha256 in place; only
-# those two lines should ever differ from the tap's copy.
+# brew` and `just ship publish-release` copy it into the tap
+# (Formula/ocid.rb), filling url/sha256.
 class Ocid < Formula
   desc "Local-first, peer-to-peer distribution of OCI container images powered by iroh"
   homepage "https://github.com/safonas/ocid"
@@ -18,10 +17,8 @@ class Ocid < Formula
     system "cargo", "install", *std_cargo_args(path: "crates/ocitop")
   end
 
-  # brew services start ocid — a launchd agent on macOS, a systemd user
-  # service on Linux. Same shape as every other channel: TLS on
-  # 127.0.0.1:5050 (trust the CA at ~/.ocid/tls/ca.crt), state in the
-  # user's default OCID_HOME.
+  # brew services: launchd agent (macOS) / systemd user unit (Linux),
+  # TLS on loopback like every other channel; state in ~/.ocid.
   service do
     run [opt_bin/"ocid", "--tls"]
     keep_alive true

@@ -3,10 +3,8 @@
 #
 # Testers install it in Podman Desktop via Settings → Extensions →
 # "Install from OCI image": ghcr.io/safonas/ocid-extension:testing.
-#
-# The artifact carries a bundled daemon image (one per arch, from the
-# release binaries) so the extension can run the daemon as a pod without a
-# separate install — the release binaries are compiled once, by slsa.yml.
+# The artifact embeds a bundled daemon image (per arch, from the release
+# binaries compiled once by slsa.yml).
 
 name: extension
 
@@ -31,9 +29,8 @@ permissions:
 
 jobs:
   # PRs: typecheck, unit tests, and an image build (no push). The daemon
-  # bundle is a placeholder tarball here — compiling the daemon per PR is
-  # not worth it (security.yml already builds the source Containerfile);
-  # the COPY path is still exercised so breakage is caught.
+  # bundle is a placeholder here — no Rust build per PR; the COPY path is
+  # still exercised.
   check:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -90,12 +87,11 @@ jobs:
           just ext-check
           just ext-test
 
-      # The bundled daemon image is assembled from the release binary that
-      # slsa.yml already compiled (dispatched before this workflow runs —
-      # see the publish job there). No second Rust build: the binary was
-      # linked against the runner's glibc and runs on Wolfi's rolling
-      # glibc (glibc is backward-compatible). Only `ocid` is bundled —
-      # host-side ocictl manages the pod daemon over https like any other.
+      # The daemon image is assembled from the release binary slsa.yml
+      # already compiled (its publish job dispatches this workflow after
+      # uploading it — no second Rust build; glibc is backward-compatible
+      # onto Wolfi's rolling base). Only `ocid` is bundled; host-side
+      # ocictl manages the pod daemon over https.
       - name: Stage the release binary for the bundled daemon
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

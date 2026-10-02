@@ -20,9 +20,8 @@ pub struct Client {
 }
 
 /// Where to dial: a daemon listening on all interfaces (the container
-/// default, `OCID_LISTEN=0.0.0.0:5050`) is reached on loopback — connecting
-/// to the unspecified address fails TLS name verification (no SAN for
-/// `0.0.0.0`), so it is normalized to `127.0.0.1`.
+/// default) is dialed on loopback — `0.0.0.0` has no SAN, so TLS
+/// verification would fail.
 fn dial_addr(listen: SocketAddr) -> SocketAddr {
     if listen.ip().is_unspecified() {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), listen.port())

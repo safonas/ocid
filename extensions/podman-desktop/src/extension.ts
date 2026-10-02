@@ -128,9 +128,8 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
   });
   panel.webview.html = await webviewHtml(extensionContext, panel);
 
-  /** Setup state for the dashboard card; also keeps `registeredNow` and
-   *  `trustedNow` fresh, and re-reads the daemon's CA (which does not exist
-   *  until the daemon first generates it). */
+  /** Setup state for the dashboard card; also re-reads the daemon's CA —
+   *  which does not exist until the daemon first generates it. */
   const extensionRoot = extensionContext.extensionUri.fsPath;
   const setup = async (): Promise<SetupState> => {
     const linux = process.platform === 'linux';
@@ -160,9 +159,8 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     await register(host);
   };
 
-  /** Start the daemon: prefer the bundled pod (TLS, self-contained); fall
-   *  back to a detached `ocid` on PATH (also TLS) when no bundle ships or
-   *  the pod fails to start. */
+  /** Start the daemon: bundled pod first, detached `ocid` on PATH as
+   *  fallback (both TLS). */
   const startDaemon = async (): Promise<void> => {
     if (await daemon.hasBundledDaemon(extensionRoot)) {
       try {

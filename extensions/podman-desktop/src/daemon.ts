@@ -1,8 +1,6 @@
-// Manages the bundled daemon as a podman container ("the daemon pod"): load
-// the bundled image, run it with a stable TLS-serving config, and report
-// whether it is up. Prefers a systemd quadlet unit (survives reboots, proper
-// supervision) and falls back to `podman run --restart=always` where no user
-// systemd session exists. The PATH-daemon fallback lives in extension.ts.
+// The bundled daemon as a podman container: quadlet-supervised where a user
+// systemd session exists, `podman run --restart=always` fallback otherwise.
+// The PATH-daemon fallback lives in extension.ts.
 
 import * as api from '@podman-desktop/api';
 import { access, mkdir, rm, writeFile } from 'node:fs/promises';
@@ -13,11 +11,9 @@ import { configHome } from './registries.ts';
 
 export const DAEMON_IMAGE = 'localhost/ocid-daemon:ext';
 export const CONTAINER_NAME = 'ocid';
-/** Registry port on the host (published to the container's 5050). */
 export const REGISTRY_PORT = 5050;
 
-/** Host directory bind-mounted to the container's OCID_HOME (/data): holds
- *  the identity, config and TLS CA. `trust.ts` reads the CA from here. */
+/** OCID_HOME for the pod daemon; trust.ts reads its CA from here. */
 export function daemonHome(): string {
   return path.join(homedir(), '.local', 'share', 'ocid');
 }
@@ -26,7 +22,6 @@ async function podman(args: string[]): Promise<api.RunResult> {
   return api.process.exec('podman', args);
 }
 
-/** True when the bundled image is already loaded. */
 async function imageExists(): Promise<boolean> {
   try {
     await podman(['image', 'exists', DAEMON_IMAGE]);
@@ -36,7 +31,6 @@ async function imageExists(): Promise<boolean> {
   }
 }
 
-/** True when the daemon container is up (quadlet- or manually-started). */
 export async function isDaemonRunning(): Promise<boolean> {
   try {
     const out = await podman([
@@ -57,7 +51,6 @@ export function tarballPath(extensionRoot: string): string {
   return path.join(extensionRoot, 'bin', 'ocid-daemon.tar');
 }
 
-/** True when a bundled daemon image tarball ships with this install. */
 export async function hasBundledDaemon(extensionRoot: string): Promise<boolean> {
   try {
     await access(tarballPath(extensionRoot));
@@ -71,10 +64,8 @@ function quadletPath(): string {
   return path.join(configHome(), 'containers', 'systemd', 'ocid.container');
 }
 
-/** The daemon pod: host networking so the iroh endpoint (QUIC + mDNS) works
- *  like a host install — full p2p, no relay-only fallback. The registry
- *  itself stays on loopback (no auth; the image's OCID_LISTEN=0.0.0.0 is
- *  for -p port mapping, which we do not use). */
+/** Host network keeps the iroh endpoint fully p2p (QUIC + mDNS); the
+ *  registry itself stays on loopback. */
 const RUN_ARGS = [
   '--network',
   'host',
@@ -111,8 +102,7 @@ function quadletUnit(): string {
   ].join('\n');
 }
 
-/** Start via quadlet (systemd user unit); false when there is no user
- *  systemd session (or it fails for any other reason). */
+/** Start via systemd user unit; false when there is no user systemd session. */
 async function startViaQuadlet(): Promise<boolean> {
   try {
     const unit = quadletPath();
@@ -130,16 +120,15 @@ async function startViaQuadlet(): Promise<boolean> {
   }
 }
 
-/** Load the bundled image (idempotent) and run it as a restarted container.
- *  The container publishes the registry on the host loopback and stores its
- *  OCID_HOME under daemonHome(), so the CA lands where trust.ts reads it. */
+/** Load the bundled image (idempotent) and start the pod — OCID_HOME under
+ *  daemonHome(), so the CA lands where trust.ts reads it. */
 export async function startDaemonPod(extensionRoot: string): Promise<void> {
   if (!(await imageExists())) {
     await podman(['load', '-i', tarballPath(extensionRoot)]);
   }
   if (await isDaemonRunning()) return;
   await mkdir(daemonHome(), { recursive: true });
-  // Clear a stopped container from a previous run (ignore if absent).
+  // clear a stopped container from a previous run
   await podman(['rm', '-f', CONTAINER_NAME]).catch(() => undefined);
   if (await startViaQuadlet()) return;
   await podman(['run', '-d', '--name', CONTAINER_NAME, '--restart', 'always', ...RUN_ARGS]);

@@ -94,8 +94,7 @@ test:
 # against a throwaway daemon on 127.0.0.1:5070. Needs ./bin/ocid — the root
 # `ext-smoke` shim builds it first via `just bin`. mDNS is disabled on the
 # throwaway node so peers()/sync() assertions never depend on what else is
-# running on this host or LAN (an unreachable mDNS-discovered peer would
-# otherwise land in sync's failed list).
+# running on this host or LAN.
 [no-cd]
 smoke: deps
     #!/usr/bin/env bash
@@ -114,11 +113,9 @@ smoke: deps
     done
     {{ _node_net }} node --experimental-strip-types scripts/smoke.mts
 
-# Build the bundled daemon image tarball (native arch) that the extension
-# artifact embeds: the root Containerfile's `daemon` target (ocid-only —
-# the same image the release workflow assembles from the release binary;
-# see Containerfile.daemon). The tarball is what `src/daemon.ts`
-# `podman load`s and runs as a pod.
+# Build the bundled daemon image tarball (native arch) the extension
+# artifact embeds: the root Containerfile's `daemon` target, ocid-only —
+# the same image the release workflow assembles from the release binary.
 [no-cd]
 daemon-image:
     #!/usr/bin/env bash

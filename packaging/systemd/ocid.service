@@ -6,9 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# --tls: every channel serves https by default (extension pod, brew service,
-# PATH daemon), so podman trusts the daemon's CA via certs.d instead of a
-# --tls-verify=false bypass. The CA lands in /var/lib/ocid/tls.
+# --tls: every channel serves https (CA in /var/lib/ocid/tls), so podman
+# trusts the daemon via certs.d instead of --tls-verify=false.
 ExecStart=/usr/bin/ocid --tls
 Environment=OCID_HOME=/var/lib/ocid
 Environment=OCID_LISTEN=127.0.0.1:5050

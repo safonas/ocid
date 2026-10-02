@@ -51,10 +51,8 @@ RUN find crates -name '*.rs' -exec touch {} + && cargo build --release \
  && strip target/release/ocid target/release/ocictl target/release/ocitop
 
 # ---------------------------------------------------------------------------
-# daemon — ocid only. This is the image the Podman Desktop extension bundles
-# (`just ext daemon-image` builds it via --target daemon; the release
-# workflow assembles the same image from the staged release binary, see
-# Containerfile.daemon).
+# daemon — ocid only: what the extension bundles (`--target daemon`; the
+# release workflow assembles the same image from the release binary).
 # ---------------------------------------------------------------------------
 FROM ${RUNTIME_IMAGE} AS daemon
 
@@ -78,7 +76,7 @@ EXPOSE 5050/tcp
 ENTRYPOINT ["/usr/local/bin/ocid"]
 
 # ---------------------------------------------------------------------------
-# runtime — the default target: the daemon plus ocictl/ocitop for
+# runtime — the default target: daemon plus ocictl/ocitop for
 # in-container debugging (`podman exec ocid ocictl status`).
 # ---------------------------------------------------------------------------
 FROM daemon AS runtime

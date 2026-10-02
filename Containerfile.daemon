@@ -1,17 +1,13 @@
-# Daemon image assembled from *prebuilt* release binaries — used by the
-# extension workflow, which downloads the release tarballs (already compiled
-# by slsa.yml) and embeds this image in the Podman Desktop extension instead
-# of compiling the daemon a second time.
+# Daemon image assembled from the *prebuilt* release binary — used by the
+# extension workflow, which embeds it in the Podman Desktop extension
+# instead of compiling the daemon a second time (glibc is
+# backward-compatible, so the runner-built binary runs on Wolfi's rolling
+# base; if the runner ever moves past Wolfi's glibc, this breaks loudly).
 #
-# The binaries are built on the ubuntu-latest runner (glibc 2.39) and run on
-# Wolfi's rolling glibc (always >= the runner's): glibc is
-# backward-compatible, so no recompile is needed. If the runner image ever
-# moves to a newer glibc than Wolfi carries, this breaks loudly (the daemon
-# container fails to start) — revisit then.
-#
-# The `daemon` stage of ./Containerfile builds the same image from source
-# (`--target daemon`, used by `just ext daemon-image` for local dev);
-# keep the two in sync.
+# Same image as ./Containerfile's `daemon` stage (built from source for
+# local dev via `just ext daemon-image`); keep the two in sync. Only `ocid`
+# — the artifact stays lean, and host-side ocictl manages the pod daemon
+# over https.
 
 # syntax=docker/dockerfile:1.27@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
 
@@ -24,10 +20,6 @@ RUN apk add --no-cache ca-certificates \
   && addgroup -S -g 1000 ocid \
   && adduser -S -D -u 1000 -G ocid -h /data ocid
 
-# The daemon binary only — the extension artifact is kept lean (~49 MB);
-# host-side `ocictl` manages this daemon over https like any other. The
-# source-built root Containerfile keeps all three binaries for
-# `podman exec` debugging; keep the two files otherwise in sync.
 COPY dist/daemon-bin/ocid /usr/local/bin/ocid
 
 USER ocid

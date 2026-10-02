@@ -106,10 +106,9 @@ pub struct RunOptions {
 
 /// Start the node and run until ctrl-c.
 pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
-    // Pick rustls's ring provider up front: the dependency tree ends up with
-    // several rustls users (iroh, the registry's TLS listener) and the
-    // crate-feature auto-detection cannot be relied on — first explicit
-    // install wins, mirroring what the control-API client does.
+    // Pick rustls's ring provider up front — the tree pulls several rustls
+    // users (iroh, the TLS listener) and feature auto-detection cannot be
+    // relied on. First explicit install wins, like client.rs does.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     // --- identity / config -------------------------------------------------
