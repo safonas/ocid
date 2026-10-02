@@ -8,7 +8,7 @@
   let { releases, status }: { releases: ReleaseInfo[]; status?: Status } = $props();
 
   let pullRef = $state('');
-  let copiedRun = $state('');
+  let copiedKey = $state('');
 
   // Coarse display-only classification from the Status rule strings (the
   // daemon stays the single policy enforcer; this never decides retention).
@@ -38,15 +38,21 @@
     return tagged ? `${r.publisher}/${r.name}:${r.tag}` : `${r.publisher}/${r.name}`;
   }
 
-  function runCmd(r: ReleaseInfo): string {
-    const reg = status?.registry ?? '127.0.0.1:5050';
-    return `podman run ${reg}/${r.publisher}/${r.name}:${r.tag}`;
+  // The registry reference as podman expects it — host:port only: podman
+  // image references must not carry a scheme, and status.registry reports
+  // one (e.g. "https://127.0.0.1:5050"). TLS is trusted via the certs.d
+  // install, so no bypass flags are needed.
+  function regRef(r: ReleaseInfo): string {
+    const reg = (status?.registry ?? '127.0.0.1:5050').replace(/^\w+:\/\//, '');
+    return `${reg}/${r.publisher}/${r.name}:${r.tag}`;
   }
 
-  async function copyRun(r: ReleaseInfo): Promise<void> {
-    await navigator.clipboard.writeText(runCmd(r));
-    copiedRun = `${r.publisher}/${r.name}:${r.tag}`;
-    setTimeout(() => (copiedRun = ''), 1500);
+  function copyCmd(cmd: string, key: string): void {
+    // navigator.clipboard is unavailable in PD webviews (not a secure
+    // context) — the backend performs the copy via the extension API.
+    sendAction({ kind: 'copy', text: cmd });
+    copiedKey = key;
+    setTimeout(() => (copiedKey = ''), 1500);
   }
 
   function pull(): void {
@@ -114,10 +120,18 @@
             <Button
               type="secondary"
               padding="px-2 py-0.5"
-              title="Copy a ready-to-paste podman run command"
-              onclick={() => void copyRun(r)}
+              title="Copy a ready-to-paste podman pull command"
+              onclick={() => copyCmd(`podman pull ${regRef(r)}`, `pull:${ref(r)}`)}
             >
-              {copiedRun === `${r.publisher}/${r.name}:${r.tag}` ? 'Copied!' : 'Run cmd'}
+              {copiedKey === `pull:${ref(r)}` ? 'Copied!' : 'Pull cmd'}
+            </Button>
+            <Button
+              type="secondary"
+              padding="px-2 py-0.5"
+              title="Copy a ready-to-paste podman run command"
+              onclick={() => copyCmd(`podman run ${regRef(r)}`, `run:${ref(r)}`)}
+            >
+              {copiedKey === `run:${ref(r)}` ? 'Copied!' : 'Run cmd'}
             </Button>
             {#if !r.mine}
               {#if isSeeded(r)}
