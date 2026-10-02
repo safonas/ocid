@@ -24,7 +24,7 @@ use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use iroh_tickets::endpoint::EndpointTicket;
 use ocid_core::{
     api::{DaemonEvent, GcReport, GcReq, PeerInfo, PolicyChangeResp, RmResp, Status},
-    config::{self, Config, Mode, Peers, Policy},
+    config::{self, Config, Mode, Peers, Policy, TlsMode},
     hash::Blake3,
     identity::{did_key, parse_publisher, Identity, PublisherId},
     oci::{Digest, ImageRef},
@@ -98,6 +98,7 @@ impl std::fmt::Debug for Node {
 #[derive(Debug, Default, Clone)]
 pub struct RunOptions {
     pub listen: Option<std::net::SocketAddr>,
+    pub tls: bool,
     pub peers: Vec<String>,
     pub no_relay: bool,
     pub no_metrics: bool,
@@ -105,6 +106,12 @@ pub struct RunOptions {
 
 /// Start the node and run until ctrl-c.
 pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
+    // Pick rustls's ring provider up front: the dependency tree ends up with
+    // several rustls users (iroh, the registry's TLS listener) and the
+    // crate-feature auto-detection cannot be relied on — first explicit
+    // install wins, mirroring what the control-API client does.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // --- identity / config -------------------------------------------------
     if !paths.is_initialized() {
         paths.ensure_dirs()?;
@@ -124,6 +131,10 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
     if let Some(l) = opts.listen {
         config_changed |= config.listen != l;
         config.listen = l;
+    }
+    if opts.tls {
+        config_changed |= config.tls != TlsMode::Auto;
+        config.tls = TlsMode::Auto;
     }
     if opts.no_relay {
         config_changed |= config.relay != config::RelayMode::Disabled;
@@ -260,22 +271,37 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
     }
 
     // --- local registry + control API --------------------------------------
+    let tls = match config.tls {
+        TlsMode::Off => None,
+        TlsMode::Auto => {
+            let material = ocid_core::tls::ensure_material(&paths.tls_dir())?;
+            Some(
+                axum_server::tls_rustls::RustlsConfig::from_pem_file(
+                    &material.server_cert,
+                    &material.server_key,
+                )
+                .await
+                .context("loading TLS certificate")?,
+            )
+        }
+    };
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .with_context(|| format!("binding registry on {}", config.listen))?;
-    tokio::spawn(registry::serve(node.clone(), listener));
+    tokio::spawn(registry::serve(node.clone(), listener, tls));
 
     // --- banner ------------------------------------------------------------
     if config.relay != config::RelayMode::Disabled {
         let _ = tokio::time::timeout(Duration::from_secs(5), endpoint.online()).await;
     }
     let id = node.identity.id();
+    let scheme = config.tls.scheme();
     eprintln!("ocid {}", env!("CARGO_PKG_VERSION"));
     eprintln!("  id        {id}");
     eprintln!("  did       {}", did_key(&id));
-    eprintln!("  registry  http://{}", config.listen);
+    eprintln!("  registry  {scheme}://{}", config.listen);
     if config.metrics {
-        eprintln!("  metrics   http://{}/metrics", config.listen);
+        eprintln!("  metrics   {scheme}://{}/metrics", config.listen);
     }
     if config.mdns {
         eprintln!("  mdns      on (_ocid._udp.local)");
@@ -286,9 +312,19 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
         eprintln!("  peers     {}", bootstrap.len());
     }
     eprintln!();
-    eprintln!("push:  podman push <image> {}/<name>:<tag>", config.listen);
+    if config.tls == TlsMode::Auto {
+        eprintln!(
+            "trust: podman/curl need the CA at {}",
+            paths.tls_dir().join(ocid_core::tls::CA_CERT_FILE).display()
+        );
+        eprintln!();
+    }
     eprintln!(
-        "pull:  podman pull {}/<publisher>/<name>:<tag>",
+        "push:  podman push <image> {scheme}://{}/<name>:<tag>",
+        config.listen
+    );
+    eprintln!(
+        "pull:  podman pull {scheme}://{}/<publisher>/<name>:<tag>",
         config.listen
     );
 
@@ -544,7 +580,7 @@ impl Node {
             id: self.id(),
             did: self.identity.did(),
             ticket: self.ticket(),
-            registry: format!("http://{}", self.config.listen),
+            registry: format!("{}://{}", self.config.tls.scheme(), self.config.listen),
             uptime_secs: self.started.elapsed().as_secs(),
             neighbors: self.neighbors.read().await.iter().copied().collect(),
             known_peers: self.peers.read().await.peers.len(),

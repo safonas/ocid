@@ -34,17 +34,53 @@
   published release; `just cut-release` bumps the extension's package.json
   in lockstep with Cargo.toml.
 
-## Remaining (after the testing round)
+## Phase 3 — TLS + self-contained daemon (in progress, targets v0.7.0)
 
-- **macOS registration**: `podman machine ssh` + `host.containers.internal`
-  drop-in inside the VM (the host drop-in does not reach it); needs testing
-  on a real machine.
-- **Daemon bundling**: ship per-platform `ocid` binaries inside the
-  extension artifact (decided: no native Windows daemon — WSL follow-up).
+Replace the "install the daemon yourself, then register an insecure http
+registry" flow with a trusted, bundled, self-supervised daemon.
+
+### Daemon TLS (`ocid` + `ocid-core`) — PR 1
+- [ ] `config.toml`: `tls = "off" | "auto"` (default `off`, so dev/e2e are
+  unchanged); `--tls` flag persisted like `--listen`.
+- [ ] First boot with `auto`: rcgen self-signed CA + server cert under
+  `OCID_HOME/tls/` (SANs `localhost`, `127.0.0.1`, `::1`,
+  `host.containers.internal`); `server.key`/`ca.key` mode 0600; regenerated
+  wholesale if any file is missing.
+- [ ] rustls listener for `/v2` + `/_ocid` (axum-server,
+  `tls-rustls-no-provider` + explicit ring provider install); `/metrics`
+  unchanged.
+- [ ] `ocictl`/`ocitop` dial `https` and trust `tls/ca.crt` when `tls =
+  "auto"` (`Client::from_config`).
+- [ ] Cosmetic: stop emitting `DaemonEvent::HttpRequest` for `GET /_ocid/*`
+  (the 2s status/peers/releases poll drowns out the event log).
+
+### Extension — PR 2
+- [ ] **TLS trust**: install `tls/ca.crt` into
+  `~/.config/containers/certs.d/localhost:5050/ca.crt` (Linux rootless);
+  macOS via `podman machine ssh`; drop `--tls-verify=false` where trust is
+  installed (keep the registries.conf drop-in + bypass for `tls = "off"`
+  and rootful/machines).
+- [ ] **Daemon delivery**: bundle per-platform `ocid` binaries in the
+  extension artifact (cross-compile via zigbuild); no native Windows daemon
+  (WSL follow-up).
+- [ ] **Daemon as a pod**: build `localhost/ocid-daemon:ext` from the
+  bundled binary at install; run via quadlet drop-in
+  (`~/.config/containers/systemd/ocid.container`, host-networked Linux)
+  with `podman run --restart=always` fallback in machine VMs; `OCID_HOME`
+  bind-mounted at `~/.local/share/ocid` (`:Z`); `PATH` daemon stays the
+  fallback.
+- [ ] **Auto-pull**: `ocid.autoPull` checkbox in the onboarding card
+  (default off) — on a followed `release_saved` event, pull into podman
+  automatically instead of showing the manual Pull toast.
+
+## Remaining
+
+- **macOS**: verify the pod + `machine ssh` trust install on a real machine
+  (best-effort until then; QUIC is relay-only behind the machine NAT).
 - **Catalog submission**: PR to podman-desktop-catalog once feedback
   stabilizes.
 - Demo material: see [todos/14-website-demo.md](14-website-demo.md)
-  (GitHub Pages + asciinema) — deliberately not part of the testing round.
+  (GitHub Pages + asciinema) — deliberately deferred.
 
 ## Context
 Podman Desktop is the most direct adoption channel for the developer-collaboration

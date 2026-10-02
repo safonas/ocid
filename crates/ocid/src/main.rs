@@ -27,6 +27,10 @@ struct Args {
     /// Registry/control/metrics listen address (default from config, 127.0.0.1:5050).
     #[arg(long, env = "OCID_LISTEN")]
     listen: Option<SocketAddr>,
+    /// Serve the registry and control API over HTTPS with a self-signed
+    /// certificate (persisted into config.toml; CA in $OCID_HOME/tls).
+    #[arg(long)]
+    tls: bool,
     /// Bootstrap peer ticket(s) (from `ocictl ticket` on another node).
     #[arg(long = "peer")]
     peers: Vec<String>,
@@ -54,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
         paths,
         node::RunOptions {
             listen: args.listen,
+            tls: args.tls,
             peers: args.peers,
             no_relay: args.no_relay,
             no_metrics: args.no_metrics,
