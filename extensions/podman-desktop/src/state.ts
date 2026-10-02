@@ -38,6 +38,10 @@ interface Dependencies {
   registerRegistry?: () => Promise<void>;
   /** Start the daemon (found via `setup().ocidPath`); throws when absent. */
   startDaemon?: () => Promise<void>;
+  /** Copy text to the system clipboard. The webview cannot do this itself:
+   *  PD webviews are not secure contexts, so `navigator.clipboard` is
+   *  unavailable and in-page copy silently no-ops. */
+  copyText?: (text: string) => Promise<void>;
 }
 
 /** The slice of the podman-desktop webview API this state talks to. */
@@ -271,6 +275,15 @@ export class DashboardState {
           await this.deps.setAutoPull(action.value);
           detail = `auto-pull ${action.value ? 'enabled' : 'disabled'}`;
           break;
+        }
+        case 'copy': {
+          if (!this.deps.copyText) {
+            throw new Error('clipboard is not available in this context');
+          }
+          await this.deps.copyText(action.text);
+          // The invoking button shows its own "Copied!" flip; a toast would
+          // be noise. Errors still surface via the catch below.
+          return;
         }
       }
       this.snapshot = { ...this.snapshot, error: undefined };

@@ -113,7 +113,8 @@ export type Action =
   | { kind: 'unpin'; reference: string }
   | { kind: 'register-registry' }
   | { kind: 'start-daemon' }
-  | { kind: 'set-auto-pull'; value: boolean };
+  | { kind: 'set-auto-pull'; value: boolean }
+  | { kind: 'copy'; text: string };
 
 export interface WebviewIn {
   type: 'ready';

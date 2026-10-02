@@ -2959,6 +2959,7 @@ dependencies = [
  "chrono",
  "clap",
  "crossterm",
+ "dirs",
  "ocid-core",
  "ratatui",
  "serde_json",

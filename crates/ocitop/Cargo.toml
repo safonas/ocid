@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 ocid-core = { workspace = true, features = ["client"] }
+dirs = { workspace = true }
 
 tokio = { workspace = true }
 clap = { workspace = true }
