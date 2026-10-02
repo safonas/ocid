@@ -380,10 +380,10 @@ on loopback and keeps its CA in `<its OCID_HOME>/tls`:
 | channel | runs as | supervised by | state home |
 |---|---|---|---|
 | `.deb`/`.rpm` | host service (DynamicUser, hardened) | systemd `ocid.service` — enable once with `systemctl enable --now ocid` | `/var/lib/ocid` |
-| Homebrew | user agent | `brew services start ocid` (launchd on macOS, systemd user unit on Linux) | `~/.ocid` |
+| Homebrew | user agent | `brew services start ocid` (launchd on macOS, systemd user unit on Linux) | `~/.local/share/ocid` |
 | PD extension | rootless container (host network) | systemd quadlet, `podman run --restart=always` fallback | `~/.local/share/ocid` |
 | container image | container | runtime restart policy | volume (`/data`) |
-| manual | foreground process | you | `~/.ocid` |
+| manual | foreground process | you | `~/.local/share/ocid` |
 
 The Homebrew formula template lives in `packaging/brew/ocid.rb` — the tap
 (`safonas/tap`) is a rendered copy kept in sync by `just packaging brew` and

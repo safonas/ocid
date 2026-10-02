@@ -18,7 +18,7 @@ class Ocid < Formula
   end
 
   # brew services: launchd agent (macOS) / systemd user unit (Linux),
-  # TLS on loopback like every other channel; state in ~/.ocid.
+  # TLS on loopback like every other channel; state in the default XDG home.
   service do
     run [opt_bin/"ocid", "--tls"]
     keep_alive true
