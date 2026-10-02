@@ -1,6 +1,6 @@
 # Podman Desktop Extension
 
-> **Priority 01 · Tier 1 — adoption:** the distribution channel; GUI onboarding for the podman audience; lowest risk (API + SSE already exist). Tracked in [#15](https://github.com/safonas/ocid/issues/15).
+> **Priority 01 · Tier 1 — adoption:** the distribution channel; GUI onboarding for the podman audience; lowest risk (API + SSE already exist). Tracked in [#15](https://github.com/safonas/ocid/issues/15) (mirrored: `rad:89e7ea9f`).
 
 ## Status
 
@@ -88,6 +88,28 @@ publishing).
 - **RC testing round**: install `ghcr.io/safonas/ocid-extension:v0.7.0-rc.1`
   on a second machine and run the two-node flow (push → ticket → follow →
   auto-pull) from the GUI.
+- **Round 2 findings** (in-flight fixes, branch TBD):
+  - **Stale bundled image**: the load-if-missing check trusted the
+    version-less `localhost/ocid-daemon:ext` tag, so upgrading the
+    extension kept running the OLD daemon image (rc.2 pod ran rc.1!).
+    Always `podman load` now. Also `just ext daemon-image` needed an
+    `rm -f` before `podman save` (docker-archive can't overwrite).
+  - **Home split**: the pod daemon lives in `~/.local/share/ocid` while
+    CLI tools (`ocictl`/`ocitop` via brew) default to `~/.ocid` — two
+    homes, two identities, and the CLI config predates TLS (no `tls` key)
+    so tools dial plain http into a TLS-only daemon. Align the pod home
+    with the CLI default (`~/.ocid`) or auto-trust; design bug from #73.
+  - **Extension cannot reach a healthy TLS daemon** (**solved**): Podman
+    Desktop's extension host replaces node's global https agent, and the
+    replacement **silently drops per-request `ca` options** — every poll
+    failed with `unable to verify the first certificate` while the same CA
+    verified fine via raw `tls.connect`. Fix: carry the CA inside a custom
+    `https.Agent` (`net.ts`, agents cached per PEM). Verified live: agent-
+    carried CA connects, per-request CA does not, in the same process.
+    Contributing bug also fixed: PD persists contributed setting defaults
+    at first install, so a pre-TLS install kept forcing
+    `http://127.0.0.1:5050` over the new https default — activate() now
+    migrates exactly that stale value.
 - **Extension-owned pod lifecycle** (RC round finding; fix in #77): default
   to the pod living exactly as long as the extension — started on
   activation, stopped on disable/removal (found: the quadlet survived

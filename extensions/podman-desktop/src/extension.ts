@@ -117,10 +117,25 @@ async function ocidLookup(): Promise<string | undefined> {
 }
 
 export async function activate(extensionContext: api.ExtensionContext): Promise<void> {
-  const url = api.configuration.getConfiguration('ocid').get<string>('registryUrl');
+  const cfg = api.configuration.getConfiguration('ocid');
+  let url = cfg.get<string>('registryUrl');
+  // PD persists contributed setting defaults at first install; an install
+  // from pre-TLS days keeps serving `http://127.0.0.1:5050` over the new
+  // https default (the daemon then rejects every poll). Migrate exactly
+  // that value — user-customized URLs are never touched.
+  if (url === 'http://127.0.0.1:5050') {
+    await cfg.update('registryUrl', 'https://127.0.0.1:5050');
+    url = 'https://127.0.0.1:5050';
+  }
   const base = url ?? 'https://127.0.0.1:5050';
   const host = registryHost(base);
   await refreshCa();
+  console.log(
+    `ocid: activate — registryUrl setting: ${JSON.stringify(url)} → base ${base}; ` +
+      `FLATPAK_ID=${process.env['FLATPAK_ID'] ?? 'unset'} ` +
+      `XDG_CONFIG_HOME=${process.env['XDG_CONFIG_HOME'] ?? 'unset'} ` +
+      `HOME=${homedir()}; CA ${getCa() ? 'found' : 'not found'}`,
+  );
   const client = new OcidClient(base, () => getCa());
 
   panel = api.window.createWebviewPanel('ocid', 'ocid', {
@@ -138,7 +153,10 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     await refreshCa();
     trustedNow = false;
     if (tls && getCa()) {
-      trustedNow = await installCa(host, getCa()!).catch(() => false);
+      trustedNow = await installCa(host, getCa()!).catch((e: Error) => {
+        console.error('ocid: installCa failed:', e);
+        return false;
+      });
     }
     return {
       platform: linux ? 'linux' : 'other',

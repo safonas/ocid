@@ -100,8 +100,13 @@ export class DashboardState {
         error: undefined,
       };
       this.push();
-    } catch {
+    } catch (e) {
       const wasUp = this.snapshot.daemon;
+      if (!wasUp) {
+        // The dashboard shows a generic "daemon down"; the reason is only
+        // visible in the logs (PD Troubleshooting → logs / journald).
+        console.error('ocid: poll failed:', e);
+      }
       this.transfers.clear();
       this.notified.clear();
       this.snapshot = {
