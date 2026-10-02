@@ -85,47 +85,32 @@ publishing).
 
 ## Remaining
 
-- **RC testing round**: install `ghcr.io/safonas/ocid-extension:v0.7.0-rc.1`
-  on a second machine and run the two-node flow (push → ticket → follow →
-  auto-pull) from the GUI.
-- **Round 2 findings** (in-flight fixes, branch TBD):
-  - **Stale bundled image**: the load-if-missing check trusted the
-    version-less `localhost/ocid-daemon:ext` tag, so upgrading the
-    extension kept running the OLD daemon image (rc.2 pod ran rc.1!).
-    Always `podman load` now. Also `just ext daemon-image` needed an
-    `rm -f` before `podman save` (docker-archive can't overwrite).
-  - **Home split**: the pod daemon lives in `~/.local/share/ocid` while
-    CLI tools (`ocictl`/`ocitop` via brew) default to `~/.ocid` — two
-    homes, two identities, and the CLI config predates TLS (no `tls` key)
-    so tools dial plain http into a TLS-only daemon. Align the pod home
-    with the CLI default (`~/.ocid`) or auto-trust; design bug from #73.
-  - **Extension cannot reach a healthy TLS daemon** (**solved**): Podman
-    Desktop's extension host replaces node's global https agent, and the
-    replacement **silently drops per-request `ca` options** — every poll
-    failed with `unable to verify the first certificate` while the same CA
-    verified fine via raw `tls.connect`. Fix: carry the CA inside a custom
-    `https.Agent` (`net.ts`, agents cached per PEM). Verified live: agent-
-    carried CA connects, per-request CA does not, in the same process.
-    Contributing bug also fixed: PD persists contributed setting defaults
-    at first install, so a pre-TLS install kept forcing
-    `http://127.0.0.1:5050` over the new https default — activate() now
-    migrates exactly that stale value.
-- **Extension-owned pod lifecycle** (RC round finding; fix in #77): default
-  to the pod living exactly as long as the extension — started on
-  activation, stopped on disable/removal (found: the quadlet survived
-  extension removal and kept the pod running). Advanced opt-out
-  `ocid.keepDaemonAlive` leaves the daemon running (quadlet-supervised
-  where systemd is reachable) for setups that accept that.
-- **Flatpak-sandboxed Podman Desktop** (RC round finding; fix in #77):
-  the extension's config writes (quadlet, certs.d, registries drop-in) must
-  target the real `~/.config` — the host podman that PD spawns does not
-  read the Flatpak `XDG_CONFIG_HOME` sandbox.
 - **macOS**: verify the pod + trust install on a real podman machine
   (best-effort until then; the PATH-daemon fallback covers it).
+- **PD UI pod visibility**: the ocid container is not listed in PD's
+  Containers page even while the dashboard sees it (socket reachable,
+  no provider errors) — investigation deliberately parked for last.
 - **Catalog submission**: PR to podman-desktop-catalog once feedback
   stabilizes.
 - Demo material: see [todos/14-website-demo.md](14-website-demo.md)
   (GitHub Pages + asciinema) — deliberately deferred.
+
+## Release history
+
+- **v0.7.0-rc.1** — Phase 3 first cut (#69–#73).
+- **v0.7.0-rc.2/3** — RC testing round on a Flatpak'd second machine:
+  onboarding card couldn't start the pod (flatpak `XDG_CONFIG_HOME`,
+  #77), sticky error bar (#77), extension couldn't reach a healthy TLS
+  daemon (PD's https-agent drops per-request CAs → agent-carried CA,
+  #81), home split between pod and CLI (→ XDG default home, #82),
+  SIGTERM as PID 1 (#77).
+- **v0.7.0 final** — adaptive dashboard (#84); Latest + tap bump
+  (first service-block release on brew).
+- **v0.7.1** — copy buttons actually copy (PD webviews have no
+  `navigator.clipboard`; routed through `api.env.clipboard`), new
+  **Pull cmd** button with scheme-stripped registry ref (#86), ocitop's
+  pull suggestion honest about certs.d trust (#87), `just ext-folder`
+  for local-folder installs (#88). Latest + tap bump.
 
 ## Context
 Podman Desktop is the most direct adoption channel for the developer-collaboration
