@@ -3,6 +3,7 @@
 // primary data path, so failures here only mean "no live view".
 
 import type { DaemonEvent, TimedEvent } from './types';
+import { requestStream } from './net.ts';
 
 const MAX_EVENTS = 200;
 const RECONNECT_DELAY_MS = 5_000;
@@ -34,6 +35,7 @@ export class EventRing {
 export class SseWatcher {
   #stopped = false;
   private readonly base: string;
+  private readonly ca: string | undefined;
   private readonly ring: EventRing;
   private readonly onChange: () => void;
   private readonly onEvent: (event: DaemonEvent) => void;
@@ -43,8 +45,10 @@ export class SseWatcher {
     ring: EventRing,
     onChange: () => void,
     onEvent: (event: DaemonEvent) => void,
+    ca?: string,
   ) {
     this.base = base;
+    this.ca = ca;
     this.ring = ring;
     this.onChange = onChange;
     this.onEvent = onEvent;
@@ -71,30 +75,26 @@ export class SseWatcher {
   }
 
   private async streamOnce(): Promise<void> {
-    const resp = await fetch(`${this.base}/_ocid/events`, {
-      headers: { accept: 'text/event-stream' },
-    });
-    if (!resp.ok || !resp.body) {
-      throw new Error(`event stream returned HTTP ${resp.status}`);
-    }
-    const reader = resp.body.getReader();
+    const url = new URL(`${this.base}/_ocid/events`);
     const decoder = new TextDecoder();
     let buffer = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      if (this.#stopped) {
-        await reader.cancel().catch(() => undefined);
-        return;
-      }
-      // Buffer raw text: a chunk may split an SSE frame or a UTF-8 char.
-      buffer += decoder.decode(value, { stream: true });
-      let sep: number;
-      while ((sep = buffer.indexOf('\n\n')) !== -1) {
-        const frame = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        this.handleFrame(frame);
-      }
+    const status = await requestStream(
+      url,
+      { headers: { accept: 'text/event-stream' }, ca: this.ca },
+      chunk => {
+        // Buffer raw text: a chunk may split an SSE frame or a UTF-8 char.
+        buffer += decoder.decode(chunk, { stream: true });
+        let sep: number;
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          this.handleFrame(frame);
+        }
+      },
+      () => this.#stopped,
+    );
+    if (status !== 200) {
+      throw new Error(`event stream returned HTTP ${status}`);
     }
   }
 
