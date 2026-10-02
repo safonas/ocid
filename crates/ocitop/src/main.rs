@@ -858,6 +858,39 @@ fn render_images(f: &mut Frame, app: &mut App, area: Rect) {
     render_inspector(f, app, cols[1]);
 }
 
+/// The `--tls-verify=false` suffix a suggested `podman pull` needs, if any.
+/// Plain when podman trusts the daemon as-is: https once the daemon CA sits
+/// in the per-host certs.d entry (the extension installs it), or plain http
+/// on loopback (containers/image treats loopback as insecure automatically).
+fn pull_verify_suffix(https: bool, ca_installed: bool, loopback: bool) -> &'static str {
+    if https {
+        if ca_installed {
+            ""
+        } else {
+            " --tls-verify=false"
+        }
+    } else if loopback {
+        ""
+    } else {
+        " --tls-verify=false"
+    }
+}
+
+/// The suggested pull command for the selected release, matching how podman
+/// on this machine will actually reach the registry.
+fn podman_pull_cmd(app: &App, reference: &str) -> String {
+    let https = app.client.base_url().starts_with("https://");
+    let ca_installed = dirs::config_dir().is_some_and(|c| {
+        c.join("containers")
+            .join("certs.d")
+            .join(app.listen.to_string())
+            .join("ca.crt")
+            .exists()
+    });
+    let suffix = pull_verify_suffix(https, ca_installed, app.listen.ip().is_loopback());
+    format!("podman pull{suffix} {}/{reference}", app.listen)
+}
+
 fn render_inspector(f: &mut Frame, app: &App, area: Rect) {
     let label = |k: &'static str| Span::styled(k, Style::default().fg(Color::Cyan));
     let lines: Vec<Line> = match app.selected() {
@@ -926,10 +959,7 @@ fn render_inspector(f: &mut Frame, app: &App, area: Rect) {
                 Line::from(""),
                 Line::from(label("pull")),
                 Line::from(Span::styled(
-                    format!(
-                        " podman pull --tls-verify=false {}/{reference} ",
-                        app.listen
-                    ),
+                    format!(" {} ", podman_pull_cmd(app, &reference)),
                     Style::default().fg(Color::White).bg(Color::DarkGray),
                 )),
             ]
@@ -1159,4 +1189,32 @@ fn centered(percent_x: u16, height: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(v)[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pull_verify_suffix;
+
+    #[test]
+    fn https_suggestion_follows_certs_d_trust() {
+        // The extension installs the CA into podman's per-host certs.d — the
+        // pull suggestion then drops the bypass flag.
+        assert_eq!(pull_verify_suffix(true, true, true), "");
+        assert_eq!(pull_verify_suffix(true, true, false), "");
+        // TLS daemon, but this machine never trusted the CA: keep the flag.
+        assert_eq!(pull_verify_suffix(true, false, true), " --tls-verify=false");
+        assert_eq!(
+            pull_verify_suffix(true, false, false),
+            " --tls-verify=false"
+        );
+    }
+
+    #[test]
+    fn http_suggestion_depends_on_loopback() {
+        assert_eq!(pull_verify_suffix(false, false, true), "");
+        assert_eq!(
+            pull_verify_suffix(false, false, false),
+            " --tls-verify=false"
+        );
+    }
 }
