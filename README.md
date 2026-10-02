@@ -215,7 +215,7 @@ alice = "<alice-hex>"
 ## CLI
 
 ```
-ocid [--home DIR] [--listen ADDR] [--peer TICKET]... [--no-relay] [--no-metrics]
+ocid [--home DIR] [--listen ADDR] [--peer TICKET]... [--no-relay] [--no-metrics] [--tls]
 
 ocictl init | whoami | status | ticket | peers
 ocictl connect <ticket>                     add a peer and join gossip with it
@@ -233,7 +233,7 @@ ocictl gc [--dry-run] [--force]             prune + reclaim blobs now
 ```
 
 `<ref>` is `[<publisher>/]<name>[:<tag>]`; `<publisher>` is hex, `did:key`
-or an alias. `--listen`/`--no-relay`/`--no-metrics` are persisted into
+or an alias. `--listen`/`--no-relay`/`--no-metrics`/`--tls` are persisted into
 `config.toml` so `ocictl` finds the daemon.
 
 ## Registry surface
@@ -256,13 +256,19 @@ usual tools:
 No authentication: bind to loopback (the default). Anyone who can reach the
 port can push as you — same trust model as the podman socket.
 
+`tls = "auto"` (or `ocid --tls`) serves the registry and control API over
+HTTPS with a self-signed CA generated under `$OCID_HOME/tls`. Point your
+tooling at that CA — podman's `certs.d` or `--cert-dir`, curl's `--cacert`,
+`ocictl`/`ocitop` do it automatically — and drop `--tls-verify=false`.
+
 ## Layout on disk (`$OCID_HOME`, default `~/.ocid`)
 
 ```
 secret.key                      ed25519 secret (0600)
-config.toml                     listen, relay, p2p_port, mdns, metrics, gc_*_secs
+config.toml                     listen, tls, relay, p2p_port, mdns, metrics, gc_*_secs
 policy.toml                     follow / seed / pin / alias
 peers.json                      known peer addresses (bootstrap)
+tls/                            self-signed CA + server cert (tls = "auto")
 blobs/                          iroh-blobs store (BLAKE3-addressed, verified, own GC)
 index/digests/<sha256>.json     sha256 -> blake3, size, media type
 index/releases/<pub>/<name>/<tag>.json      signed release records

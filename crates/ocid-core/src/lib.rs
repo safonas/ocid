@@ -15,3 +15,4 @@ pub mod index;
 pub mod oci;
 pub mod paths;
 pub mod release;
+pub mod tls;

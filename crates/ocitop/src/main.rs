@@ -117,7 +117,7 @@ impl App {
     async fn new(paths: Paths) -> Result<Self> {
         let cfg = Config::load(&paths).unwrap_or_default();
         let mut app = Self {
-            client: Client::new(cfg.listen),
+            client: Client::from_config(&cfg, &paths),
             listen: cfg.listen,
             policy: Policy::load(&paths).unwrap_or_default(),
             paths,

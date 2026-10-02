@@ -562,7 +562,7 @@ fn whoami(paths: &Paths) -> Result<()> {
 async fn ls(paths: &Paths) -> Result<()> {
     let cfg = Config::load(paths)?;
     let policy = Policy::load(paths)?;
-    let c = Client::new(cfg.listen);
+    let c = Client::from_config(&cfg, paths);
     let (releases, offline): (Vec<ReleaseInfo>, bool) = if c.is_running().await {
         (c.get("/_ocid/releases").await?, false)
     } else {
@@ -647,7 +647,7 @@ async fn ls(paths: &Paths) -> Result<()> {
 
 fn client(paths: &Paths) -> Result<Client> {
     let cfg = Config::load(paths).context("loading config")?;
-    Ok(Client::new(cfg.listen))
+    Ok(Client::from_config(&cfg, paths))
 }
 
 /// A client for a running daemon, or `None` when it is not reachable: policy

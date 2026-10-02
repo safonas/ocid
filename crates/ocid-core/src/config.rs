@@ -37,6 +37,9 @@ use crate::{
 pub struct Config {
     /// Where the local OCI registry + control API listens.
     pub listen: SocketAddr,
+    /// TLS for the registry + control API: "auto" (self-signed certificate,
+    /// trusted CA material under `OCID_HOME/tls`) or "off" (plain http).
+    pub tls: TlsMode,
     /// Relay mode: "default" (n0 relays), "disabled".
     pub relay: RelayMode,
     /// Fixed UDP bind port for iroh (0 = random).
@@ -56,6 +59,26 @@ pub struct Config {
     pub blob_gc_interval_secs: u64,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TlsMode {
+    /// Plain HTTP (the default).
+    #[default]
+    Off,
+    /// HTTPS with a self-signed CA generated under `OCID_HOME/tls`.
+    Auto,
+}
+
+impl TlsMode {
+    /// URL scheme this mode serves (and clients should dial).
+    pub fn scheme(self) -> &'static str {
+        match self {
+            TlsMode::Off => "http",
+            TlsMode::Auto => "https",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum RelayMode {
@@ -67,6 +90,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             listen: "127.0.0.1:5050".parse().unwrap(),
+            tls: TlsMode::Off,
             relay: RelayMode::Default,
             p2p_port: 0,
             mdns: true,
@@ -644,6 +668,20 @@ impl Peers {
 mod tests {
     use super::*;
     use crate::identity::Identity;
+
+    #[test]
+    fn tls_config_compat() {
+        assert_eq!(Config::default().tls, TlsMode::Off);
+        // configs written before TLS existed keep working
+        let c: Config = toml::from_str("").unwrap();
+        assert_eq!(c.tls, TlsMode::Off);
+        let c: Config = toml::from_str("tls = \"auto\"").unwrap();
+        assert_eq!(c.tls, TlsMode::Auto);
+        assert_eq!(c.tls.scheme(), "https");
+        assert_eq!(TlsMode::Off.scheme(), "http");
+        let back = toml::to_string(&c).unwrap();
+        assert!(back.contains("tls = \"auto\""));
+    }
 
     #[test]
     fn mode_roundtrip() {

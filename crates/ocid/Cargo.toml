@@ -27,6 +27,9 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tokio-stream = { workspace = true }
 axum = { workspace = true }
+axum-server = { workspace = true }
+# enables the ring CryptoProvider for axum-server's rustls (feature unification)
+rustls = { workspace = true }
 bytes = { workspace = true }
 
 clap = { workspace = true }

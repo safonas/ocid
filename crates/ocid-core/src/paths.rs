@@ -6,6 +6,7 @@
 //! ├── config.toml                node configuration
 //! ├── policy.toml                seeding policy: seeds, follows, aliases
 //! ├── peers.json                 known peer addresses (bootstrap)
+//! ├── tls/                       self-signed CA + server cert (tls = "auto")
 //! ├── blobs/                     iroh-blobs FsStore (BLAKE3 content-addressed)
 //! ├── index/
 //! │   ├── digests/<sha256>.json  sha256 -> {blake3, size}
@@ -53,6 +54,9 @@ impl Paths {
     }
     pub fn peers(&self) -> PathBuf {
         self.home.join("peers.json")
+    }
+    pub fn tls_dir(&self) -> PathBuf {
+        self.home.join("tls")
     }
     pub fn blobs(&self) -> PathBuf {
         self.home.join("blobs")

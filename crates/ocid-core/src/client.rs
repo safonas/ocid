@@ -1,10 +1,12 @@
 //! HTTP client for the daemon's `/_ocid/` control API.
 
-use std::{net::SocketAddr, time::Duration};
+use std::{fs, net::SocketAddr, path::Path, time::Duration};
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+
+use crate::{config::Config, paths::Paths, tls::CA_CERT_FILE};
 
 #[derive(Clone)]
 pub struct Client {
@@ -21,6 +23,39 @@ impl Client {
                 .connect_timeout(Duration::from_secs(3))
                 .build()
                 .unwrap_or_default(),
+        }
+    }
+
+    /// A client for a daemon per its persisted `config.toml`: `https`,
+    /// trusting the daemon's own CA, when `tls = "auto"`, plain `http`
+    /// otherwise.
+    pub fn from_config(config: &Config, paths: &Paths) -> Self {
+        match config.tls {
+            crate::config::TlsMode::Off => Self::new(config.listen),
+            crate::config::TlsMode::Auto => {
+                Self::https(config.listen, &paths.tls_dir().join(CA_CERT_FILE))
+            }
+        }
+    }
+
+    /// An `https` client that additionally trusts the daemon's CA
+    /// certificate (unreadable CA material falls through: the request then
+    /// fails verification, which is the honest signal).
+    fn https(listen: SocketAddr, ca_cert: &Path) -> Self {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let mut builder = reqwest::Client::builder().connect_timeout(Duration::from_secs(3));
+        match fs::read(ca_cert)
+            .map_err(anyhow::Error::from)
+            .and_then(|pem| reqwest::Certificate::from_pem(&pem).map_err(anyhow::Error::from))
+        {
+            Ok(cert) => builder = builder.tls_certs_merge([cert]),
+            Err(e) => {
+                tracing::warn!("reading CA certificate {}: {e}", ca_cert.display())
+            }
+        }
+        Self {
+            base: format!("https://{listen}"),
+            http: builder.build().unwrap_or_default(),
         }
     }
 

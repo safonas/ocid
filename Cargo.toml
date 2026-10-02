@@ -28,8 +28,10 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 axum = { version = "0.8", features = ["http1", "json", "query"] }
-reqwest = { version = "0.13", default-features = false, features = ["json"] }
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = "0.14"
 bytes = "1"
 
 # cli

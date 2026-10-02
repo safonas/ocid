@@ -58,7 +58,11 @@ struct Upload {
     size: u64,
 }
 
-pub async fn serve(node: Arc<Node>, listener: tokio::net::TcpListener) {
+pub async fn serve(
+    node: Arc<Node>,
+    listener: tokio::net::TcpListener,
+    tls: Option<axum_server::tls_rustls::RustlsConfig>,
+) {
     let app = App {
         node,
         uploads: Arc::new(Mutex::new(HashMap::new())),
@@ -87,7 +91,17 @@ pub async fn serve(node: Arc<Node>, listener: tokio::net::TcpListener) {
         .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(app.clone(), count_requests))
         .with_state(app);
-    if let Err(e) = axum::serve(listener, router).await {
+    let res: anyhow::Result<()> = match tls {
+        Some(tls) => axum_server::Server::<std::net::SocketAddr>::from_listener(listener)
+            .acceptor(axum_server::tls_rustls::RustlsAcceptor::new(tls))
+            .serve(router.into_make_service())
+            .await
+            .map_err(anyhow::Error::from),
+        None => axum::serve(listener, router)
+            .await
+            .map_err(anyhow::Error::from),
+    };
+    if let Err(e) = res {
         tracing::error!("registry server failed: {e}");
     }
 }
@@ -96,10 +110,11 @@ pub async fn serve(node: Arc<Node>, listener: tokio::net::TcpListener) {
 async fn count_requests(State(app): State<App>, req: Request, next: Next) -> Response {
     let method = req.method().to_string();
     let route = metrics::route_family(req.uri().path());
-    // Only pay for the path copy when someone is listening on /_ocid/events,
-    // and never echo the event stream request itself.
+    // Read-only control polls (ocitop / the extension's 2s poller hitting
+    // status, peers and releases) would drown out every other line in the
+    // event log; the event stream never echoes itself either.
     let path = (app.node.events.receiver_count() > 0
-        && !req.uri().path().starts_with("/_ocid/events"))
+        && !(req.method() == Method::GET && req.uri().path().starts_with("/_ocid/")))
     .then(|| req.uri().path().to_string());
     let resp = next.run(req).await;
     let status = resp.status().as_u16();

@@ -374,7 +374,9 @@ of the control plane. Rules that keep it thin:
   streaming, sha256 is re-checked after download against the signed record,
   and podman verifies sha256 again on pull.
 * **Local registry** has no auth; it binds to loopback. Anyone who can reach
-  it can push as you — same trust model as the local podman socket.
+  it can push as you — same trust model as the local podman socket. With
+  `tls = "auto"` it serves HTTPS with a self-signed CA under `$OCID_HOME/tls`
+  (transport encryption and a CA clients can pin — not authentication).
 * **Deletion** is local. There is no signed tombstone; a publisher cannot
   recall a release from peers who already hold it.
 

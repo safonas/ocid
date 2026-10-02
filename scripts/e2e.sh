@@ -6,8 +6,8 @@
 #   OCID_BIN=/path scripts/e2e.sh
 #
 # Requirements on the host: bash, podman, curl, jq. `oras` enables the
-# referrers test (skipped when missing). Nodes use ports 15050/15051 and a
-# temporary OCID_HOME; everything is cleaned up on exit.
+# referrers test (skipped when missing). Nodes use ports 15050/15051/15052
+# and a temporary OCID_HOME; everything is cleaned up on exit.
 #
 # Release timestamps are second-resolution, so consecutive pushes of the same
 # image are spaced >1s apart (`tick`) to make `latest`/`last:N` deterministic.
@@ -85,12 +85,14 @@ cleanup() {
     log "cleanup"
     [[ -n "${PID_A:-}" ]] && kill "$PID_A" 2>/dev/null || true
     [[ -n "${PID_B:-}" ]] && kill "$PID_B" 2>/dev/null || true
+    [[ -n "${PID_C:-}" ]] && kill "$PID_C" 2>/dev/null || true
     sleep 0.5
     # shellcheck disable=SC2046
-    podman rmi -f $(podman images --format '{{.Repository}}:{{.Tag}}' | grep -E "^$REG_A/|^$REG_B/" || true) >/dev/null 2>&1 || true
+    podman rmi -f $(podman images --format '{{.Repository}}:{{.Tag}}' | grep -E "^$REG_A/|^$REG_B/|^${REG_C:-unset}/" || true) >/dev/null 2>&1 || true
     if (( FAIL > 0 )); then
         echo "--- node A log ---"; tail -n 30 "$WORK/a.log" || true
         echo "--- node B log ---"; tail -n 30 "$WORK/b.log" || true
+        [[ -f "$WORK/c.log" ]] && { echo "--- node C log ---"; tail -n 30 "$WORK/c.log" || true; }
     fi
     rm -rf "$WORK"
     echo
@@ -210,6 +212,7 @@ assert_contains "release_saved event for the push" "$ev" '"type":"release_saved"
 assert_contains "outbound gossip event" "$ev" '"type":"gossip"'
 assert_contains "http_request events while a listener is attached" "$ev" '"type":"http_request"'
 assert_not_contains "event stream does not echo itself" "$ev" '/_ocid/events'
+assert_not_contains "poll GETs are hidden from the event stream" "$ev" '"path":"/_ocid/releases"'
 assert_contains "SSE content-type" "$(curl -s -D - -o /dev/null --max-time 1 "http://$REG_A/_ocid/events" || true)" "text/event-stream"
 
 log "metrics"
@@ -292,7 +295,45 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. ocictl offline
+# 7. TLS registry (config tls = "auto")
+# ---------------------------------------------------------------------------
+
+log "TLS registry"
+PORT_C=${PORT_C:-15052}
+REG_C="127.0.0.1:$PORT_C"
+HOME_C="$WORK/c"
+mkdir -p "$HOME_C"
+OCID_HOME="$HOME_C" RUST_LOG=ocid=info,warn "$OCID" --no-relay --tls --listen "$REG_C" >"$WORK/c.log" 2>&1 &
+PID_C=$!
+CA="$HOME_C/tls/ca.crt"
+require "node C up (https, CA-verified)" 15 curl -sf --cacert "$CA" "https://$REG_C/v2/"
+assert_contains "TLS material generated" "$(ls "$HOME_C/tls")" "ca.crt"
+assert_contains "config persisted tls for C" 'tls = "auto"' "$(grep ^tls "$HOME_C/config.toml")"
+assert_contains "ocictl speaks https to the TLS daemon" "$(OCID_HOME="$HOME_C" "$CTL" status)" "https://$REG_C"
+if curl -sf "http://$REG_C/v2/" >/dev/null 2>&1; then
+    fail "plain http is rejected by the TLS registry"
+else
+    ok "plain http is rejected by the TLS registry"
+fi
+
+log "TLS registry: verified push and pull"
+CERTS="$WORK/certs"
+mkdir -p "$CERTS"
+cp "$CA" "$CERTS/ca.crt"
+# podman's --cert-dir is a *flat* directory (containers/image DockerCertPath):
+# every *.crt in it is treated as a root CA.
+podman push -q --cert-dir "$CERTS" "$SRC_IMAGE" "$REG_C/alpine:9" >/dev/null \
+    && ok "podman push over verified TLS" || fail "podman push over verified TLS"
+podman pull -q --cert-dir "$CERTS" "$REG_C/alpine:9" >/dev/null \
+    && ok "podman pull over verified TLS" || fail "podman pull over verified TLS"
+if podman pull -q "$REG_C/alpine:9" >/dev/null 2>&1; then
+    fail "pull without the CA fails against the TLS registry"
+else
+    ok "pull without the CA fails against the TLS registry"
+fi
+
+# ---------------------------------------------------------------------------
+# 8. ocictl offline
 # ---------------------------------------------------------------------------
 
 log "ocictl works without a daemon"
