@@ -129,6 +129,7 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
       registryHost: host,
       registered: registeredNow,
       ocidPath: await ocidLookup(),
+      autoPull: api.configuration.getConfiguration('ocid').get<boolean>('autoPull') === true,
     };
   };
 
@@ -167,6 +168,16 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     setup,
     registerRegistry,
     startDaemon,
+    autoPull: () => api.configuration.getConfiguration('ocid').get<boolean>('autoPull') === true,
+    setAutoPull: async (value: boolean) => {
+      await api.configuration.getConfiguration('ocid').update('autoPull', value);
+    },
+    autoPullRelease: (publisher, name, tag) => {
+      const reference = `${host}/${publisher}/${name}:${tag}`;
+      podmanRun(['pull', reference], `ocid: auto-pulling ${name}:${tag}`)
+        .then(() => api.window.showInformationMessage(`Pulled ${name}:${tag} from ocid peers`))
+        .catch(e => api.window.showErrorMessage(`Auto-pull failed: ${runErrMsg(e)}`));
+    },
     onFollowedRelease: (publisher, name, tag) => {
       newFromFollowed++;
       const reference = `${host}/${publisher}/${name}:${tag}`;

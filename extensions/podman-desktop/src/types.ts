@@ -112,7 +112,8 @@ export type Action =
   | { kind: 'pin'; reference: string }
   | { kind: 'unpin'; reference: string }
   | { kind: 'register-registry' }
-  | { kind: 'start-daemon' };
+  | { kind: 'start-daemon' }
+  | { kind: 'set-auto-pull'; value: boolean };
 
 export interface WebviewIn {
   type: 'ready';
@@ -137,6 +138,8 @@ export interface SetupState {
   registered: boolean;
   /** Absolute path of the ocid binary, if one was found. */
   ocidPath?: string;
+  /** Whether new followed releases are pulled into podman automatically. */
+  autoPull: boolean;
 }
 
 export interface StateSnapshot {

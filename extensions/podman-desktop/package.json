@@ -27,6 +27,11 @@
           "type": "string",
           "default": "http://127.0.0.1:5050",
           "description": "Base URL of the ocid daemon's registry and control API."
+        },
+        "ocid.autoPull": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically pull new releases from followed peers into podman."
         }
       }
     },

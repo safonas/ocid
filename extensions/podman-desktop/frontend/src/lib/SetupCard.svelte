@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '@podman-desktop/ui-svelte';
+  import { Button, Checkbox } from '@podman-desktop/ui-svelte';
   import { sendAction } from '../api';
   import type { SetupState } from '../../../src/types';
 
@@ -21,6 +21,13 @@
           Start ocid daemon
         </Button>
         <span class="dim">from <code class="mono">{setup.ocidPath}</code></span>
+      </div>
+      <div class="row">
+        <Checkbox
+          checked={setup.autoPull}
+          onclick={(value) => sendAction({ kind: 'set-auto-pull', value })}>
+          Automatically pull new releases from followed peers into podman
+        </Checkbox>
       </div>
     {:else}
       <p>Install the ocid daemon on this machine, then come back to start it:</p>

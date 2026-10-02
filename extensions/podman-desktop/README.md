@@ -16,6 +16,9 @@ The extension also hooks into Podman Desktop itself:
 
 - **Toasts** when a followed publisher ships a release, with a one-click
   *Pull* that runs `podman pull` as a task in the task widget.
+- **Auto-pull** (opt-in checkbox on the setup card, default off): instead of
+  the toast, new releases from followed peers are pulled into podman
+  automatically. Persisted as the `ocid.autoPull` setting.
 - **Push image to ocid peers** on the Images page context menu: pushes the
   image to the daemon's registry as a visible task — the daemon signs it and
   announces it, so peers following you replicate it automatically.
