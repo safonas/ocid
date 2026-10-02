@@ -60,6 +60,7 @@ body {
 
 .topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 6px 0 12px;
@@ -74,6 +75,7 @@ body {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   border-bottom: 1px solid var(--ocid-border);
   margin-bottom: 12px;
@@ -91,7 +93,8 @@ body {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  /* min() keeps the grid valid inside panes narrower than one card. */
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
@@ -135,8 +138,16 @@ body {
 
 .setup .row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+/* Paths/URLs inside rows must never push the layout wide. */
+.setup .row code,
+.setup .row .dim {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .setup pre {
@@ -155,11 +166,22 @@ body {
 
 .ticket {
   display: flex;
+  flex-wrap: wrap;
   gap: 24px;
   background: var(--ocid-card);
   border: 1px solid var(--ocid-border);
   border-radius: 5px;
   padding: 14px 18px;
+}
+
+/* Narrow panes: the QR wraps below the ticket text instead of crushing it. */
+@media (max-width: 560px) {
+  .ticket {
+    gap: 12px;
+  }
+  .ticket .left {
+    flex-basis: 100%;
+  }
 }
 
 .ticket .left {
@@ -218,6 +240,14 @@ body {
   resize: vertical;
 }
 
+/* Wrapper for the ui-svelte Input (its root div has Tailwind `grow`, but
+ * no min-width — the wrapper pins it so it fills the bar and never pushes
+ * or gets crushed in a narrow pane). */
+.bar .grow {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
 .dim {
   color: var(--ocid-fg-dim);
 }
@@ -225,6 +255,12 @@ body {
 table {
   width: 100%;
   border-collapse: collapse;
+}
+
+/* Wide tables (releases) scroll horizontally inside their pane instead of
+ * clipping columns; narrow tables (peers) keep their natural width. */
+.table-wrap {
+  overflow-x: auto;
 }
 
 th {
@@ -276,11 +312,14 @@ tr:hover td {
 
 td.actions {
   text-align: right;
-  white-space: nowrap;
+  /* Buttons stack into rows on narrow panes instead of forcing the table
+   * (and the pane) wide. */
+  white-space: normal;
+  min-width: 180px;
 }
 
 td.actions :global(button) {
-  margin-left: 4px;
+  margin: 1px 0 1px 4px;
 }
 
 .log {
@@ -288,6 +327,7 @@ td.actions :global(button) {
   font-size: 12px;
   max-height: 60vh;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .log .line {
@@ -307,6 +347,12 @@ td.actions :global(button) {
   color: var(--ocid-fg-dim);
   min-width: 64px;
   font-size: 11px;
+}
+
+.log .msg {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .log .gossip .msg {
@@ -353,6 +399,8 @@ td.actions :global(button) {
 
 .transfer {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
@@ -362,7 +410,7 @@ td.actions :global(button) {
 }
 
 .tref {
-  max-width: 220px;
+  max-width: min(220px, 60vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -375,7 +423,7 @@ td.actions :global(button) {
 }
 
 .tbar {
-  flex: 1;
+  flex: 1 1 120px;
   min-width: 120px;
   height: 6px;
   border-radius: 3px;

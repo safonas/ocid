@@ -35,8 +35,9 @@
     automatically on the LAN via mDNS).
   </p>
 {:else}
-  <table>
-    <thead>
+  <div class="table-wrap">
+    <table style="min-width: 480px">
+      <thead>
       <tr>
         <th>Peer</th>
         <th>Neighbor</th>
@@ -65,5 +66,6 @@
         </tr>
       {/each}
     </tbody>
-  </table>
+    </table>
+  </div>
 {/if}
