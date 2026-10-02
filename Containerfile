@@ -51,17 +51,18 @@ RUN find crates -name '*.rs' -exec touch {} + && cargo build --release \
  && strip target/release/ocid target/release/ocictl target/release/ocitop
 
 # ---------------------------------------------------------------------------
-# runtime
+# daemon — ocid only. This is the image the Podman Desktop extension bundles
+# (`just ext daemon-image` builds it via --target daemon; the release
+# workflow assembles the same image from the staged release binary, see
+# Containerfile.daemon).
 # ---------------------------------------------------------------------------
-FROM ${RUNTIME_IMAGE} AS runtime
+FROM ${RUNTIME_IMAGE} AS daemon
 
 RUN apk add --no-cache ca-certificates \
- && addgroup -S -g 1000 ocid \
- && adduser -S -D -u 1000 -G ocid -h /data ocid
+  && addgroup -S -g 1000 ocid \
+  && adduser -S -D -u 1000 -G ocid -h /data ocid
 
-COPY --from=builder /src/target/release/ocid   /usr/local/bin/ocid
-COPY --from=builder /src/target/release/ocictl /usr/local/bin/ocictl
-COPY --from=builder /src/target/release/ocitop /usr/local/bin/ocitop
+COPY --from=builder /src/target/release/ocid /usr/local/bin/ocid
 
 USER ocid
 WORKDIR /data
@@ -75,3 +76,12 @@ EXPOSE 5050/tcp
 
 # The daemon initialises an identity on first start if /data is empty.
 ENTRYPOINT ["/usr/local/bin/ocid"]
+
+# ---------------------------------------------------------------------------
+# runtime — the default target: the daemon plus ocictl/ocitop for
+# in-container debugging (`podman exec ocid ocictl status`).
+# ---------------------------------------------------------------------------
+FROM daemon AS runtime
+
+COPY --from=builder /src/target/release/ocictl /usr/local/bin/ocictl
+COPY --from=builder /src/target/release/ocitop /usr/local/bin/ocitop

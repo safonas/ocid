@@ -90,12 +90,13 @@ jobs:
           just ext-check
           just ext-test
 
-      # The bundled daemon image is assembled from the release binaries that
+      # The bundled daemon image is assembled from the release binary that
       # slsa.yml already compiled (dispatched before this workflow runs —
-      # see the publish job there). No second Rust build: the binaries were
-      # linked against the runner's glibc and run on Wolfi's rolling glibc
-      # (glibc is backward-compatible).
-      - name: Stage the release binaries for the bundled daemon
+      # see the publish job there). No second Rust build: the binary was
+      # linked against the runner's glibc and runs on Wolfi's rolling
+      # glibc (glibc is backward-compatible). Only `ocid` is bundled —
+      # host-side ocictl manages the pod daemon over https like any other.
+      - name: Stage the release binary for the bundled daemon
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -105,7 +106,6 @@ jobs:
             gh release download "$TAG" --pattern "ocid-*-linux-${arch}.tar.gz" --output "ocid-${arch}.tar.gz" --clobber
             mkdir -p "dist/daemon-${arch}"
             tar -xzf "ocid-${arch}.tar.gz" -C "dist/daemon-${arch}"
-            ls "dist/daemon-${arch}"
           done
 
       # The arm64 builder stage runs under emulation (the artifact itself is
@@ -142,7 +142,7 @@ jobs:
               mkdir -p extensions/podman-desktop/bin
               for arch in amd64 arm64; do
                 rm -rf dist/daemon-bin && mkdir -p dist/daemon-bin
-                cp dist/daemon-$arch/* dist/daemon-bin/
+                cp dist/daemon-$arch/ocid dist/daemon-bin/
                 buildah bud --platform linux/$arch -t localhost/ocid-daemon:ext -f Containerfile.daemon .
                 rm -f extensions/podman-desktop/bin/ocid-daemon.tar
                 buildah push localhost/ocid-daemon:ext docker-archive:extensions/podman-desktop/bin/ocid-daemon.tar:localhost/ocid-daemon:ext

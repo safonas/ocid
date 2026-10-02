@@ -115,14 +115,16 @@ smoke: deps
     {{ _node_net }} node --experimental-strip-types scripts/smoke.mts
 
 # Build the bundled daemon image tarball (native arch) that the extension
-# artifact embeds. Uses the repo root Containerfile (multi-stage, wolfi-base);
-# the tarball is what `src/daemon.ts` `podman load`s and runs as a pod.
+# artifact embeds: the root Containerfile's `daemon` target (ocid-only —
+# the same image the release workflow assembles from the release binary;
+# see Containerfile.daemon). The tarball is what `src/daemon.ts`
+# `podman load`s and runs as a pod.
 [no-cd]
 daemon-image:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
-    {{ podman }} build -t localhost/ocid-daemon:ext -f Containerfile .
+    {{ podman }} build -t localhost/ocid-daemon:ext --target daemon -f Containerfile .
     mkdir -p {{ ext_dir }}/bin
     {{ podman }} save localhost/ocid-daemon:ext -o {{ ext_dir }}/bin/ocid-daemon.tar
 
