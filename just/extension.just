@@ -123,6 +123,7 @@ daemon-image:
     cd "{{ justfile_directory() }}"
     {{ podman }} build -t localhost/ocid-daemon:ext --target daemon -f Containerfile .
     mkdir -p {{ ext_dir }}/bin
+    rm -f {{ ext_dir }}/bin/ocid-daemon.tar
     {{ podman }} save localhost/ocid-daemon:ext -o {{ ext_dir }}/bin/ocid-daemon.tar
 
 # Build the extension OCI artifact (scratch base, per the publishing guide:

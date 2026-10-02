@@ -1,6 +1,6 @@
 # DNS Publisher Records (human names instead of hex)
 
-> **Priority 02 · Tier 1 — adoption:** names are marketing; kills the hex-soup UX; cheap and offline-testable. Tracked in [#16](https://github.com/safonas/ocid/issues/16).
+> **Priority 02 · Tier 1 — adoption:** names are marketing; kills the hex-soup UX; cheap and offline-testable. Tracked in [#16](https://github.com/safonas/ocid/issues/16) (mirrored: `rad:f211a100`).
 
 ## Context
 Registry paths cannot contain uppercase and publisher identity is a raw
