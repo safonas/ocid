@@ -140,6 +140,8 @@ export interface SetupState {
   ocidPath?: string;
   /** True when the extension ships a bundled daemon image (runs as a pod). */
   bundled: boolean;
+  /** Advanced ocid.keepDaemonAlive: the pod outlives the extension. */
+  keepDaemonAlive: boolean;
   /** Whether the registry is served over https (daemon tls = "auto"). */
   tls: boolean;
   /** Whether new followed releases are pulled into podman automatically. */

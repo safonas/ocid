@@ -88,6 +88,16 @@ publishing).
 - **RC testing round**: install `ghcr.io/safonas/ocid-extension:v0.7.0-rc.1`
   on a second machine and run the two-node flow (push → ticket → follow →
   auto-pull) from the GUI.
+- **Extension-owned pod lifecycle** (RC round finding; fix in #77): default
+  to the pod living exactly as long as the extension — started on
+  activation, stopped on disable/removal (found: the quadlet survived
+  extension removal and kept the pod running). Advanced opt-out
+  `ocid.keepDaemonAlive` leaves the daemon running (quadlet-supervised
+  where systemd is reachable) for setups that accept that.
+- **Flatpak-sandboxed Podman Desktop** (RC round finding; fix in #77):
+  the extension's config writes (quadlet, certs.d, registries drop-in) must
+  target the real `~/.config` — the host podman that PD spawns does not
+  read the Flatpak `XDG_CONFIG_HOME` sandbox.
 - **macOS**: verify the pod + trust install on a real podman machine
   (best-effort until then; the PATH-daemon fallback covers it).
 - **Catalog submission**: PR to podman-desktop-catalog once feedback

@@ -31,8 +31,13 @@ export function registryHost(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/\/+$/, '');
 }
 
-/** User-level containers config dir (what rootless podman reads). */
+/** User-level containers config dir (what rootless podman reads). Podman
+ *  Desktop is often run as a Flatpak, where XDG_CONFIG_HOME points into a
+ *  sandbox — but the podman it spawns and the user's systemd read the
+ *  real ~/.config (PD's process.exec reaches the host), so config meant
+ *  for them must land there. */
 export function configHome(): string {
+  if (process.env['FLATPAK_ID']) return path.join(homedir(), '.config');
   return process.env['XDG_CONFIG_HOME'] || path.join(homedir(), '.config');
 }
 

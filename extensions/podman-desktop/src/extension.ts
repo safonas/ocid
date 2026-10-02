@@ -146,6 +146,7 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
       registered: registeredNow,
       ocidPath: await ocidLookup(),
       bundled: await daemon.hasBundledDaemon(extensionRoot),
+      keepDaemonAlive: keepDaemonAlive(),
       autoPull: api.configuration.getConfiguration('ocid').get<boolean>('autoPull') === true,
       tls,
     };
@@ -164,7 +165,7 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
   const startDaemon = async (): Promise<void> => {
     if (await daemon.hasBundledDaemon(extensionRoot)) {
       try {
-        await daemon.startDaemonPod(extensionRoot);
+        await daemon.startDaemonPod(extensionRoot, keepDaemonAlive());
         return;
       } catch (e) {
         if (!(await ocidLookup())) throw e; // nothing to fall back to
@@ -305,11 +306,20 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
   );
 }
 
+const keepDaemonAlive = (): boolean =>
+  api.configuration.getConfiguration('ocid').get<boolean>('keepDaemonAlive') === true;
+
 export function deactivate(): void {
   state?.dispose();
   state = undefined;
   panel = undefined;
   statusBar = undefined;
+  // Extension-owned lifecycle: stop the bundled pod we started when the
+  // extension goes away (ocid.keepDaemonAlive opts out).
+  void daemon
+    .isDaemonPodOurs()
+    .then(ours => (ours && !keepDaemonAlive() ? daemon.stopDaemonPod() : undefined))
+    .catch(() => undefined);
 }
 
 /** index.html from the built frontend, with asset links rewritten to

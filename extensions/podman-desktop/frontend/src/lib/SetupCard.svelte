@@ -14,14 +14,16 @@
     {#if setup.ocidPath || setup.bundled}
       <p>
         The ocid daemon is not running. It serves the registry and control API on
-        <code class="mono">{setup.registryHost}</code> and keeps running when Podman Desktop closes.
+        <code class="mono">{setup.registryHost}</code>.
       </p>
       <div class="row">
         <Button type="primary" onclick={() => sendAction({ kind: 'start-daemon' })}>
           Start ocid daemon
         </Button>
         <span class="dim">
-          {#if setup.bundled}bundled image, runs as a pod{:else}from <code class="mono">{setup.ocidPath}</code>{/if}
+          {#if setup.bundled}bundled image, runs as a pod —
+            {#if setup.keepDaemonAlive}stays running (ocid.keepDaemonAlive){:else}stops with the extension{/if}
+          {:else}from <code class="mono">{setup.ocidPath}</code>{/if}
         </span>
       </div>
       <div class="row">

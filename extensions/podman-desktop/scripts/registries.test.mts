@@ -4,9 +4,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  configHome,
   dropinContent,
   dropinPath,
   isRegistered,
@@ -27,6 +28,23 @@ test('dropinPath lives in registries.conf.d with a stable name', () => {
     dropinPath('/home/user/.config'),
     path.join('/home/user/.config', 'containers', 'registries.conf.d', '100-ocid.conf'),
   );
+});
+
+test('configHome escapes the Flatpak sandbox (podman reads the real ~/.config)', () => {
+  const savedFlatpak = process.env['FLATPAK_ID'];
+  const savedXdg = process.env['XDG_CONFIG_HOME'];
+  try {
+    process.env['XDG_CONFIG_HOME'] = '/home/user/.var/app/io.podman_desktop.PodmanDesktop/config';
+    process.env['FLATPAK_ID'] = 'io.podman_desktop.PodmanDesktop';
+    assert.equal(configHome(), path.join(homedir(), '.config'));
+    delete process.env['FLATPAK_ID'];
+    assert.equal(configHome(), '/home/user/.var/app/io.podman_desktop.PodmanDesktop/config');
+  } finally {
+    if (savedFlatpak === undefined) delete process.env['FLATPAK_ID'];
+    else process.env['FLATPAK_ID'] = savedFlatpak;
+    if (savedXdg === undefined) delete process.env['XDG_CONFIG_HOME'];
+    else process.env['XDG_CONFIG_HOME'] = savedXdg;
+  }
 });
 
 test('dropinContent marks the host insecure', () => {
