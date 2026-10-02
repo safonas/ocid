@@ -11,7 +11,8 @@ import { configHome } from './registries.ts';
 const CA_FILE = 'ca.crt';
 
 /** CA locations in preference order: extension pod home, the deb/rpm system
- *  service (/var/lib/ocid — ca.crt is world-readable there), then ~/.ocid. */
+ *  service (/var/lib/ocid — ca.crt is world-readable there), then the
+ *  legacy ~/.ocid. */
 export function caCandidates(): string[] {
   const home = homedir();
   return [

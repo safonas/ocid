@@ -1,7 +1,8 @@
 //! On-disk layout of an ocid node.
 //!
 //! ```text
-//! $OCID_HOME (default ~/.ocid)
+//! $OCID_HOME (default: XDG data home — ~/.local/share/ocid;
+//!             a pre-existing legacy ~/.ocid keeps being used)
 //! ├── secret.key                 ed25519 secret key (hex, mode 0600)
 //! ├── config.toml                node configuration
 //! ├── policy.toml                seeding policy: seeds, follows, aliases
@@ -24,7 +25,8 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// Resolve the node home: explicit `home`, else `$OCID_HOME`, else `~/.ocid`.
+    /// Resolve the node home: explicit `home`, else `$OCID_HOME`, else the
+    /// XDG data home (see [`Paths::from_env`]).
     pub fn resolve(home: Option<PathBuf>) -> Result<Self> {
         if let Some(h) = home {
             return Ok(Self { home: h });
@@ -32,15 +34,31 @@ impl Paths {
         Self::from_env()
     }
 
-    /// Resolve the node home from `$OCID_HOME`, falling back to `~/.ocid`.
+    /// Resolve the node home from `$OCID_HOME`; otherwise the XDG data home
+    /// (`$XDG_DATA_HOME/ocid`, default `~/.local/share/ocid`) when it already
+    /// exists, then a pre-existing legacy `~/.ocid`; fresh nodes default to
+    /// the XDG home. The extension's daemon pod bind-mounts that same XDG
+    /// home, so `ocictl`/`ocitop` and the pod share one node with no env
+    /// wiring.
     pub fn from_env() -> Result<Self> {
-        let home = match std::env::var_os("OCID_HOME") {
-            Some(v) if !v.is_empty() => PathBuf::from(v),
-            _ => dirs::home_dir()
-                .context("could not determine home directory; set OCID_HOME")?
-                .join(".ocid"),
-        };
-        Ok(Self { home })
+        if let Some(v) = std::env::var_os("OCID_HOME") {
+            if !v.is_empty() {
+                return Ok(Self {
+                    home: PathBuf::from(v),
+                });
+            }
+        }
+        let home_dir =
+            dirs::home_dir().context("could not determine home directory; set OCID_HOME")?;
+        let xdg = std::env::var_os("XDG_DATA_HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home_dir.join(".local").join("share"))
+            .join("ocid");
+        let legacy = home_dir.join(".ocid");
+        Ok(Self {
+            home: choose_home(&xdg, &legacy),
+        })
     }
 
     pub fn secret_key(&self) -> PathBuf {
@@ -93,6 +111,18 @@ impl Paths {
     }
 }
 
+/// Home-selection rule (pure so it can be tested): an existing XDG home
+/// wins, then an existing legacy home; fresh systems start in the XDG home.
+fn choose_home(xdg: &Path, legacy: &Path) -> PathBuf {
+    if xdg.exists() {
+        xdg.to_path_buf()
+    } else if legacy.exists() {
+        legacy.to_path_buf()
+    } else {
+        xdg.to_path_buf()
+    }
+}
+
 /// Atomically write a file (write to temp + rename).
 pub fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     let parent = path.parent().context("path has no parent")?;
@@ -105,4 +135,37 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     std::fs::write(&tmp, data).with_context(|| format!("writing {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("renaming to {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmpdir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("ocid-paths-{tag}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn absent(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("ocid-paths-{tag}-{}", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn xdg_home_wins_when_both_exist() {
+        let (xdg, legacy) = (tmpdir("xdg"), tmpdir("legacy"));
+        assert_eq!(choose_home(&xdg, &legacy), xdg);
+    }
+
+    #[test]
+    fn legacy_home_used_when_xdg_absent() {
+        let (xdg, legacy) = (absent("xdg"), tmpdir("legacy"));
+        assert_eq!(choose_home(&xdg, &legacy), legacy);
+    }
+
+    #[test]
+    fn fresh_systems_default_to_xdg() {
+        let (xdg, legacy) = (absent("xdg"), absent("legacy"));
+        assert_eq!(choose_home(&xdg, &legacy), xdg);
+    }
 }

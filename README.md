@@ -132,7 +132,7 @@ just bin                      # builds inside podman -> ./bin/ocid, ./bin/ocictl
 Run the daemon:
 
 ```sh
-./bin/ocid                    # first run creates ~/.ocid (or $OCID_HOME) and prints your id + ticket
+./bin/ocid                    # first run creates ~/.local/share/ocid (or $OCID_HOME; a pre-existing ~/.ocid is still honored) and prints your id + ticket
 ```
 
 Publish (another shell):
@@ -261,7 +261,7 @@ HTTPS with a self-signed CA generated under `$OCID_HOME/tls`. Point your
 tooling at that CA — podman's `certs.d` or `--cert-dir`, curl's `--cacert`,
 `ocictl`/`ocitop` do it automatically — and drop `--tls-verify=false`.
 
-## Layout on disk (`$OCID_HOME`, default `~/.ocid`)
+## Layout on disk (`$OCID_HOME`, default `~/.local/share/ocid`)
 
 ```
 secret.key                      ed25519 secret (0600)
