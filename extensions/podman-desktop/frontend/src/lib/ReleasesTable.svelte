@@ -57,13 +57,15 @@
 </script>
 
 <div class="bar">
-  <Input
-    class="mono"
-    placeholder="pull <publisher>/<name>[:<tag>]"
-    aria-label="Reference to pull"
-    bind:value={pullRef}
-    onkeypress={e => e.key === 'Enter' && pull()}
-  />
+  <div class="grow">
+    <Input
+      class="mono"
+      placeholder="pull <publisher>/<name>[:<tag>]"
+      aria-label="Reference to pull"
+      bind:value={pullRef}
+      onkeypress={e => e.key === 'Enter' && pull()}
+    />
+  </div>
   <Button onclick={pull}>Pull</Button>
 </div>
 
@@ -72,8 +74,9 @@
     No releases yet. Push one: <code class="mono">podman push 127.0.0.1:5050/&lt;name&gt;:&lt;tag&gt;</code>
   </p>
 {:else}
-  <table>
-    <thead>
+  <div class="table-wrap">
+    <table style="min-width: 640px">
+      <thead>
       <tr>
         <th>Publisher</th>
         <th>Image</th>
@@ -139,5 +142,6 @@
         </tr>
       {/each}
     </tbody>
-  </table>
+    </table>
+  </div>
 {/if}
