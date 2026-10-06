@@ -12,7 +12,7 @@
 # syntax=docker/dockerfile:1.27@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
 
 # Wolfi rolling base (re-pin regularly for fresh security fixes).
-ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:7d567cad5eab29038705b01a900061fdae87ff19d23ae2b44c93ce691608c0ac
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:2ac1d505fb413c69dded7b707be9efc0fa63f6fe6b05f6d88612454f89f15345
 
 FROM ${RUNTIME_IMAGE}
 
