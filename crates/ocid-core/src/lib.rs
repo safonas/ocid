@@ -9,6 +9,7 @@ pub mod api;
 #[cfg(feature = "client")]
 pub mod client;
 pub mod config;
+pub mod dns;
 pub mod hash;
 pub mod identity;
 pub mod index;

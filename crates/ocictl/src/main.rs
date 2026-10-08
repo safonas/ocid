@@ -40,6 +40,13 @@ enum Command {
     Init,
     /// Print this node's identity.
     Whoami,
+    /// Print the signed DNS TXT record binding a zone to this node's
+    /// publisher id — publish it as `_ocid.<zone>` to make
+    /// `podman pull <registry>/<zone>/<name>` resolve to this node.
+    DnsRecord {
+        /// DNS zone this node's images will be served under.
+        zone: String,
+    },
     /// Show status of the running daemon.
     Status,
     /// Print this node's connection ticket (daemon must be running).
@@ -151,6 +158,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
     match command {
         Command::Init => init(paths),
         Command::Whoami => whoami(paths),
+        Command::DnsRecord { zone } => dns_record(paths, &zone),
         Command::Status => {
             let s: Status = client(paths)?.get("/_ocid/status").await?;
             println!("version    {}", s.version);
@@ -556,6 +564,35 @@ fn whoami(paths: &Paths) -> Result<()> {
     println!("id    {}", id.id());
     println!("did   {}", id.did());
     println!("home  {}", paths.home.display());
+    Ok(())
+}
+
+/// `ocictl dns-record <zone>` — print the signed TXT record binding `zone`
+/// to this node's publisher id. Fully offline: signs with the local
+/// identity; publishing into the DNS zone is the admin's job.
+fn dns_record(paths: &Paths, zone: &str) -> Result<()> {
+    let id = Identity::load(paths)?;
+    let rec = ocid_core::dns::DnsRecord::new(zone, &id)?;
+    let cfg = Config::load(paths)?;
+    let scheme = match cfg.tls {
+        ocid_core::config::TlsMode::Auto => "https",
+        ocid_core::config::TlsMode::Off => "http",
+    };
+    println!("Publish this record in the {zone} zone:");
+    println!();
+    println!("  _ocid.{zone}. 300 IN TXT \"{}\"", rec.to_txt());
+    println!();
+    println!("Once it propagates, pulls use the name instead of hex:");
+    println!();
+    println!(
+        "  podman pull {scheme}://{}/{zone}/<name>:<tag>",
+        cfg.listen
+    );
+    println!();
+    println!("The signature binds the record to this zone and publisher");
+    println!("  ({}; did:key form {}).", id.id(), did_key(&id.id()));
+    println!("Peers verify it and pin the key locally on first use; re-run");
+    println!("and re-publish to refresh the timestamp when it ages out.");
     Ok(())
 }
 

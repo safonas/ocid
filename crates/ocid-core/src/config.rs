@@ -57,6 +57,24 @@ pub struct Config {
     pub gc_grace_secs: u64,
     /// How often the blob store deletes unpinned data (seconds).
     pub blob_gc_interval_secs: u64,
+    /// Resolve domain-form repository segments (`images.example.com/app`)
+    /// to publisher ids via `_ocid` TXT records.
+    pub dns: DnsMode,
+    /// Custom DNS resolver (`host[:port]`) for those lookups — the system
+    /// resolver by default (tests and air-gapped setups override it).
+    pub dns_nameserver: Option<String>,
+    /// Reject `_ocid` DNS records signed more than this many seconds ago.
+    pub dns_max_age_secs: u64,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DnsMode {
+    /// Resolve domain-form repository segments via DNS (the default).
+    #[default]
+    On,
+    /// Never perform DNS lookups; domains fall through to the name rules.
+    Off,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -99,6 +117,9 @@ impl Default for Config {
             gc_interval_secs: 3600,
             gc_grace_secs: 86400,
             blob_gc_interval_secs: 60,
+            dns: DnsMode::On,
+            dns_nameserver: None,
+            dns_max_age_secs: 30 * 24 * 3600,
         }
     }
 }
