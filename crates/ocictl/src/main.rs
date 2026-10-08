@@ -611,8 +611,8 @@ fn dns_record(paths: &Paths, zone: &str, ts: Option<u64>) -> Result<()> {
         cfg.listen
     );
     println!();
-    println!("The signature binds the record to this zone and publisher");
-    println!("  ({}; did:key form {}).", id.id(), did_key(&id.id()));
+    println!("The signature binds the record to this zone and your publisher");
+    println!("key (run `ocictl whoami` to see both forms).");
     println!("Peers verify it and pin the key locally on first use; re-run");
     println!("and re-publish to refresh the timestamp when it ages out.");
     Ok(())
