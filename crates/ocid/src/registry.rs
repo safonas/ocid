@@ -23,10 +23,12 @@ use axum::{
 use n0_future::StreamExt;
 use ocid_core::{
     api::{
-        AddPeerReq, AddPeerResp, AnnounceReq, AnnounceResp, DaemonEvent, ErrorResp, FollowReq,
-        GcReq, OkResp, PinReq, RefReq, ReleaseInfo, RmReq, RmResp, SeedReq, SyncReq, SyncResp,
-        UnfollowReq, UnpinReq, UnseedReq,
+        AddPeerReq, AddPeerResp, AnnounceReq, AnnounceResp, DaemonEvent, DnsResolveReq,
+        DnsResolveResp, DnsUnpinReq, DnsUnpinResp, ErrorResp, FollowReq, GcReq, OkResp, PinReq,
+        RefReq, ReleaseInfo, RmReq, RmResp, SeedReq, SyncReq, SyncResp, UnfollowReq, UnpinReq,
+        UnseedReq,
     },
+    dns::is_domain_name,
     identity::PublisherId,
     oci::{self, Digest, ImageRef, Manifest},
     release::{BlobRef, Referrer, Release, ReleasePayload, ReleaseSummary},
@@ -40,6 +42,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_util::io::ReaderStream;
 
 use crate::{
+    dns_resolver::ZoneOutcome,
     metrics::{self, RequestLabels},
     node::Node,
 };
@@ -84,6 +87,8 @@ pub async fn serve(
         .route("/_ocid/policy/unfollow", post(ctl_unfollow))
         .route("/_ocid/policy/pin", post(ctl_pin))
         .route("/_ocid/policy/unpin", post(ctl_unpin))
+        .route("/_ocid/dns/resolve", get(ctl_dns_resolve))
+        .route("/_ocid/dns/unpin", post(ctl_dns_unpin))
         .route("/_ocid/gc", post(ctl_gc))
         .route("/_ocid/rm", post(ctl_rm))
         .route("/_ocid/events", get(ctl_events))
@@ -339,11 +344,41 @@ async fn v2_dispatch(
     }
 }
 
-/// Resolve a registry repository path via the hybrid scheme.
+/// Resolve a registry repository path via the hybrid scheme, with DNS
+/// publisher names first: `<domain>/<name>` where `<domain>` has a
+/// verified `_ocid` TXT record resolves to that publisher id.
 async fn resolve(app: &App, name: &str) -> std::result::Result<(PublisherId, String), OciError> {
+    let name = resolve_dns_name(app, name).await?;
     let policy = app.node.policy().await;
-    oci::resolve_repo(name, &policy, &app.node.id())
+    oci::resolve_repo(&name, &policy, &app.node.id())
         .map_err(|e| OciError::new(StatusCode::BAD_REQUEST, "NAME_INVALID", e.to_string()))
+}
+
+/// Rewrite `<domain>/<name>[:<tag>]` to `<hex>/<name>[:<tag>]` when the
+/// domain has a verified `_ocid` record. A domain with no record (or a
+/// dotted self-name like `my.app` with only one path segment) falls
+/// through to the alias/implicit rules unchanged. A record that fails
+/// verification surfaces its error: a spoofed or hijacked name must not
+/// silently resolve to someone else's namespace.
+async fn resolve_dns_name(app: &App, name: &str) -> std::result::Result<String, OciError> {
+    if let Some((first, rest)) = name.split_once('/') {
+        if !rest.is_empty() && is_domain_name(first) {
+            match app.node.dns.resolve_zone(first).await {
+                Ok(ZoneOutcome::Resolved { publisher, .. }) => {
+                    return Ok(format!("{publisher}/{rest}"));
+                }
+                Ok(ZoneOutcome::NoRecord | ZoneOutcome::Disabled) => {}
+                Err(e) => {
+                    return Err(OciError::new(
+                        StatusCode::BAD_REQUEST,
+                        "NAME_INVALID",
+                        format!("DNS publisher name {first:?}: {e}"),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(name.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -1087,6 +1122,59 @@ async fn ctl_pin(State(app): State<App>, Json(req): Json<PinReq>) -> Response {
 
 async fn ctl_unpin(State(app): State<App>, Json(req): Json<UnpinReq>) -> Response {
     ctl_result(app.node.unpin(&req.reference).await)
+}
+
+/// `GET /_ocid/dns/resolve?zone=<zone>` — inspect a publisher name: which
+/// key it resolves to and why (pinned, newly pinned, no record, or the
+/// verification failure). Never fails with an HTTP error: the state field
+/// carries the outcome.
+async fn ctl_dns_resolve(State(app): State<App>, Query(req): Query<DnsResolveReq>) -> Response {
+    let resp = match app.node.dns.resolve_zone(&req.zone).await {
+        Ok(ZoneOutcome::Resolved {
+            publisher,
+            newly_pinned,
+        }) => DnsResolveResp {
+            zone: req.zone.clone(),
+            state: if newly_pinned {
+                "new".into()
+            } else {
+                "pinned".into()
+            },
+            publisher: Some(publisher.to_string()),
+            detail: None,
+        },
+        Ok(ZoneOutcome::NoRecord) => DnsResolveResp {
+            zone: req.zone.clone(),
+            state: "no-record".into(),
+            publisher: None,
+            detail: None,
+        },
+        Ok(ZoneOutcome::Disabled) => DnsResolveResp {
+            zone: req.zone.clone(),
+            state: "disabled".into(),
+            publisher: None,
+            detail: None,
+        },
+        Err(e) => DnsResolveResp {
+            zone: req.zone.clone(),
+            state: "error".into(),
+            publisher: None,
+            detail: Some(format!("{e:#}")),
+        },
+    };
+    Json(resp).into_response()
+}
+
+/// `POST /_ocid/dns/unpin` — drop the TOFU pin for a zone (deliberate key
+/// rotation; the next resolution re-pins whatever the zone publishes).
+async fn ctl_dns_unpin(State(app): State<App>, Json(req): Json<DnsUnpinReq>) -> Response {
+    ctl_result(
+        app.node
+            .dns
+            .unpin(&req.zone)
+            .await
+            .map(|removed| DnsUnpinResp { removed }),
+    )
 }
 
 async fn ctl_rm(State(app): State<App>, Json(req): Json<RmReq>) -> Response {

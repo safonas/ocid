@@ -87,7 +87,9 @@ Repository path resolution (hybrid scheme):
 flowchart TD
     in["/v2/&lt;repo&gt;/…"] --> q1{"first segment<br/>is 64-hex?"}
     q1 -- yes --> explicit["publisher = hex<br/>name = rest"]
-    q1 -- no --> q2{"whole repo<br/>is an image alias?"}
+    q1 -- no --> q0{"first segment is a<br/>domain with a verified<br/>_ocid TXT record?"}
+    q0 -- yes --> dns["publisher = record key<br/>(TOFU-pinned)<br/>name = rest"]
+    q0 -- no --> q2{"whole repo<br/>is an image alias?"}
     q2 -- yes --> ialias["alias → publisher/name"]
     q2 -- no --> q3{"first segment<br/>is a publisher alias?"}
     q3 -- yes --> palias["publisher = alias target<br/>name = rest"]
@@ -96,6 +98,45 @@ flowchart TD
 
 Only the key holder can write into a publisher namespace: pushes to
 `<other>/…` are refused with 403.
+
+### DNS publisher names
+
+A domain name can stand in for the hex publisher id: whoever controls a
+DNS zone publishes a signed TXT record at `_ocid.&lt;zone&gt;` binding the
+zone to their publisher key:
+
+```
+_oid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> sig=<128-hex>"
+```
+
+`sig` is an Ed25519 signature by the key it carries over the canonical
+payload `ocid1 <zone> <k> <ts>` — mutual consent: the zone admin points
+the name at the key, and only the key's owner could have signed it.
+Releases are signed by the same key, so once the name is trusted every
+artifact under it is self-verifying.
+
+DNS is an untrusted lookup; trust is anchored locally:
+
+- The signature is always verified; the zone is part of the signed bytes
+  (a record cannot be replayed across zones).
+- Freshness: records older than `dns_max_age_secs` (default 30 days) are
+  rejected.
+- TOFU pinning: the first verified resolution pins the key in
+  `$OCID_HOME/dns-pins.json`; a later record for the same zone with a
+  different key is rejected as a possible hijack. Rotation is explicit:
+  `ocictl dns-unpin <zone>`, then the next resolve re-pins.
+- Positive and negative lookups are cached briefly (TTL-capped); errors
+  are never cached, so every pull re-checks a bad record.
+- Dotted image names (`my.app`) pass the domain gate and fall through to
+  the alias/self rules on a lookup miss — DNS adds a branch, it never
+  breaks existing names.
+- `policy.toml` keeps domain forms (`follow images.example.com`); the
+  daemon records the resolved key in a `[dns]` mapping table so
+  evaluation never needs DNS at policy-load time.
+
+Produce a record with `ocictl dns-record <zone>`; inspect a name with
+`ocictl resolve <zone>`; the daemon exposes the same via
+`GET /_ocid/dns/resolve` and `POST /_ocid/dns/unpin`.
 
 ## Data model
 
@@ -392,6 +433,10 @@ The Homebrew formula template lives in `packaging/brew/ocid.rb` — the tap
 ## Trust boundaries
 
 * **Publisher** is trusted for *what* `name:tag` means (they sign it).
+* **DNS** is not trusted: a `_ocid` TXT record is only an unverified claim
+  until its Ed25519 signature checks out and it agrees with the local TOFU
+  pin. The pins (`$OCID_HOME/dns-pins.json`), not DNS, are the root for
+  name→key mapping.
 * **Providers** (any peer) are not trusted: BLAKE3 verifies every chunk while
   streaming, sha256 is re-checked after download against the signed record,
   and podman verifies sha256 again on pull.

@@ -57,3 +57,17 @@ biggest UX wart (hex soup) and makes the edge-Kubernetes story presentable —
 Flux `OCIRepository` URLs like `images.example.com/team/app` look normal.
 Slot it directly after the Podman Desktop extension and alongside/before
 `06-edge-kubernetes-flux.md`, which it complements.
+
+## Status
+
+**PR1 merged-pending (gh#96, `feat/dns-records`)** 2026-10-09 — core landed:
+record format + TOFU pins + `is_domain_name` gate + `ocictl dns-record`
+(8 unit tests). **PR2** (same branch, uncommitted work in progress) —
+daemon wiring: hickory resolver with TTL/negative cache, registry
+`resolve()` DNS pre-step, `/_ocid/dns/resolve` + `/_ocid/dns/unpin`,
+`ocictl resolve` / `ocictl dns-unpin`, policy domain forms (follow/seed/
+pin/track accept domains; `policy.toml` keeps the domain form and records
+the resolved key in a `[dns]` mapping table), dnsmasq e2e (pull by name,
+hijack rejection, stale rejection, pin-survives-restart, rotation),
+docs (DESIGN.md naming diagram + trust boundaries, README naming table +
+CLI). PR3 (follow-up): docs polish + pkarr/discovery-hint evaluation.

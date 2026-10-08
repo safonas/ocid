@@ -315,7 +315,7 @@ impl fmt::Display for ImageRef {
 }
 
 /// Split `name[:tag]`. The tag separator is the last ':' after the last '/'.
-fn split_tag(s: &str) -> Result<(String, Option<String>)> {
+pub fn split_tag(s: &str) -> Result<(String, Option<String>)> {
     let last_slash = s.rfind('/').map(|i| i + 1).unwrap_or(0);
     let (name, tag) = match s[last_slash..].rfind(':') {
         Some(i) => (&s[..last_slash + i], Some(&s[last_slash + i + 1..])),

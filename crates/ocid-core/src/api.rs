@@ -117,6 +117,34 @@ pub struct OkResp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnsResolveReq {
+    pub zone: String,
+}
+
+/// Result of `GET /_ocid/dns/resolve?zone=…`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnsResolveResp {
+    pub zone: String,
+    /// `pinned` (existing pin confirmed), `new` (pinned now), `no-record`
+    /// (falls through to name rules), `disabled` (dns = off), or `error`.
+    pub state: String,
+    pub publisher: Option<String>,
+    /// Human-readable detail for the `error` state (stale record, pin
+    /// mismatch, bad signature…).
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnsUnpinReq {
+    pub zone: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnsUnpinResp {
+    pub removed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeedReq {
     pub reference: String,
     #[serde(default)]

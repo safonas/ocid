@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     identity::{parse_publisher, PublisherId},
-    oci::ImageRef,
     paths::{write_atomic, Paths},
 };
 
@@ -307,6 +306,12 @@ pub struct Policy {
     pub pin: Vec<String>,
     /// alias -> publisher (hex) or publisher/name
     pub alias: BTreeMap<String, String>,
+    /// DNS publisher names the policy refers to, mapped to the publisher
+    /// key they currently resolve to (`<zone>` -> hex). Written by the
+    /// daemon when a policy rule in domain form is saved; read at policy
+    /// evaluation so `policy.toml` keeps the human-readable domain form.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dns: BTreeMap<String, String>,
 }
 
 /// One parsed seed rule.
@@ -406,7 +411,7 @@ impl Policy {
     pub fn seed_rules(&self) -> Vec<SeedRule> {
         self.seed
             .iter()
-            .filter_map(|e| match parse_seed_rule(&e.reference, e.mode) {
+            .filter_map(|e| match self.parse_seed_rule(&e.reference, e.mode) {
                 Ok(r) => Some(r),
                 Err(err) => {
                     tracing::warn!("ignoring invalid seed rule {:?}: {err}", e.reference);
@@ -419,7 +424,7 @@ impl Policy {
     pub fn follows(&self) -> Vec<(PublisherId, Mode)> {
         self.follow
             .iter()
-            .filter_map(|e| match parse_publisher(&e.publisher) {
+            .filter_map(|e| match self.parse_publisher_arg(&e.publisher) {
                 Ok(p) => Some((p, e.mode)),
                 Err(err) => {
                     tracing::warn!("ignoring invalid follow {:?}: {err}", e.publisher);
@@ -439,7 +444,7 @@ impl Policy {
     pub fn pins(&self) -> Vec<SeedRule> {
         self.pin
             .iter()
-            .filter_map(|s| match parse_seed_rule(s, Mode::Full) {
+            .filter_map(|s| match self.parse_seed_rule(s, Mode::Full) {
                 Ok(r) if r.tag.is_some() => Some(r),
                 Ok(_) => {
                     tracing::warn!("ignoring pin without tag {s:?}");
@@ -451,6 +456,46 @@ impl Policy {
                 }
             })
             .collect()
+    }
+
+    /// Resolve a policy publisher slot: hex/`did:key`, or a domain name
+    /// mapped through the daemon-maintained `dns` table. Unknown domains
+    /// fail (the daemon records the mapping when a domain rule is saved).
+    pub fn parse_publisher_arg(&self, s: &str) -> Result<PublisherId> {
+        if let Ok(p) = parse_publisher(s) {
+            return Ok(p);
+        }
+        if crate::dns::is_domain_name(s) {
+            let key = self.dns.get(s).with_context(|| {
+                format!("domain {s:?} has no recorded publisher mapping; resolve it first")
+            })?;
+            return parse_publisher(key)
+                .with_context(|| format!("domain {s:?} maps to an invalid publisher id"));
+        }
+        parse_publisher(s).context("not a publisher id or known domain")
+    }
+
+    /// Parse a seed rule, resolving a domain in the publisher slot through
+    /// the `dns` mapping table.
+    pub fn parse_seed_rule(&self, s: &str, mode: Mode) -> Result<SeedRule> {
+        let (pubs, rest) = s
+            .split_once('/')
+            .with_context(|| format!("rule {s:?} must be <publisher>/<name>[:<tag>]"))?;
+        let publisher = self.parse_publisher_arg(pubs)?;
+        let (name, tag) = crate::oci::split_tag(rest)?;
+        Ok(SeedRule {
+            publisher,
+            name,
+            tag,
+            mode,
+        })
+    }
+
+    /// Record the publisher a domain resolved to (daemon writes this when a
+    /// domain-form rule is saved, so the human-readable zone survives in
+    /// policy.toml while evaluation uses the key).
+    pub fn set_dns_mapping(&mut self, zone: &str, publisher: &PublisherId) {
+        self.dns.insert(zone.to_string(), publisher.to_string());
     }
 
     /// Every publisher the policy refers to (follows, seeds, pins). These are
@@ -508,18 +553,21 @@ impl Policy {
     }
 
     /// Add or update a seed rule. Returns `true` if the policy changed.
+    /// A domain in the publisher slot is kept in the written rule (not
+    /// canonicalized to hex) so `policy.toml` stays human-readable; the
+    /// resolved key lives in the `dns` mapping table.
     pub fn add_seed(&mut self, rule: &str, mode: Mode) -> Result<bool> {
-        let parsed = parse_seed_rule(rule, mode)?;
-        let canonical = seed_rule_to_string(&parsed);
-        if let Some(existing) = self.seed.iter_mut().find(|e| e.reference == canonical) {
-            if existing.mode == mode || parsed.tag.is_some() {
+        // Validate through the mapping table, but store the rule as written.
+        let _ = self.parse_seed_rule(rule, mode)?;
+        if let Some(existing) = self.seed.iter_mut().find(|e| e.reference == rule) {
+            if existing.mode == mode {
                 return Ok(false);
             }
             existing.mode = mode;
             return Ok(true);
         }
         self.seed.push(SeedEntry {
-            reference: canonical,
+            reference: rule.to_string(),
             mode,
         });
         Ok(true)
@@ -527,65 +575,92 @@ impl Policy {
 
     /// Remove a seed rule. Without a tag, removes every rule for that image.
     pub fn remove_seed(&mut self, rule: &str) -> Result<bool> {
-        let parsed = parse_seed_rule(rule, Mode::Full)?;
+        let parsed = self.parse_seed_rule(rule, Mode::Full)?;
         let before = self.seed.len();
-        self.seed
-            .retain(|e| match parse_seed_rule(&e.reference, e.mode) {
+        // Resolve each stored rule first (immutable borrow), then retain.
+        let keep: Vec<bool> = self
+            .seed
+            .iter()
+            .map(|e| match self.parse_seed_rule(&e.reference, e.mode) {
                 Ok(r) => {
                     !(r.publisher == parsed.publisher
                         && r.name == parsed.name
                         && (parsed.tag.is_none() || r.tag == parsed.tag))
                 }
                 Err(_) => true,
-            });
+            })
+            .collect();
+        let mut i = 0;
+        self.seed.retain(|_| {
+            let k = keep[i];
+            i += 1;
+            k
+        });
         Ok(self.seed.len() != before)
     }
 
-    /// Add or update a follow. Returns `true` if the policy changed.
-    pub fn add_follow(&mut self, publisher: &PublisherId, mode: Mode) -> bool {
-        if let Some(existing) = self
+    /// Add or update a follow. Returns `true` if the policy changed. The
+    /// `publisher` may be a domain; it is stored in domain form and the
+    /// resolved key recorded in the `dns` mapping table.
+    pub fn add_follow(&mut self, publisher: &str, mode: Mode) -> Result<bool> {
+        let key = self.parse_publisher_arg(publisher)?;
+        // Compare against resolved forms of existing entries first.
+        let existing_idx = self
             .follow
-            .iter_mut()
-            .find(|e| parse_publisher(&e.publisher).ok().as_ref() == Some(publisher))
-        {
-            if existing.mode == mode {
-                return false;
+            .iter()
+            .position(|e| self.parse_publisher_arg(&e.publisher).ok().as_ref() == Some(&key));
+        if let Some(idx) = existing_idx {
+            if self.follow[idx].mode == mode {
+                return Ok(false);
             }
-            existing.mode = mode;
-            return true;
+            self.follow[idx].mode = mode;
+            return Ok(true);
         }
         self.follow.push(FollowEntry {
             publisher: publisher.to_string(),
             mode,
         });
-        true
+        Ok(true)
     }
 
-    pub fn remove_follow(&mut self, publisher: &PublisherId) -> bool {
+    pub fn remove_follow(&mut self, publisher: &str) -> Result<bool> {
+        let key = self.parse_publisher_arg(publisher)?;
         let before = self.follow.len();
-        self.follow
-            .retain(|e| parse_publisher(&e.publisher).ok().as_ref() != Some(publisher));
-        self.follow.len() != before
+        let dns = &self.dns;
+        self.follow.retain(|e| {
+            parse_publisher(&e.publisher)
+                .ok()
+                .or_else(|| {
+                    crate::dns::is_domain_name(&e.publisher)
+                        .then(|| dns.get(&e.publisher))
+                        .flatten()
+                        .and_then(|k| parse_publisher(k).ok())
+                })
+                .as_ref()
+                != Some(&key)
+        });
+        Ok(self.follow.len() != before)
     }
 
     pub fn add_pin(&mut self, reference: &str) -> Result<bool> {
-        let parsed = parse_seed_rule(reference, Mode::Full)?;
+        let parsed = self.parse_seed_rule(reference, Mode::Full)?;
         if parsed.tag.is_none() {
             bail!("a pin needs a tag: {reference}");
         }
-        let canonical = seed_rule_to_string(&parsed);
-        if self.pin.contains(&canonical) {
+        // Store as written so domain-form pins stay human-readable.
+        if self.pin.contains(&reference.to_string()) {
             return Ok(false);
         }
-        self.pin.push(canonical);
+        self.pin.push(reference.to_string());
         Ok(true)
     }
 
     pub fn remove_pin(&mut self, reference: &str) -> Result<bool> {
-        let parsed = parse_seed_rule(reference, Mode::Full)?;
+        let parsed = self.parse_seed_rule(reference, Mode::Full)?;
+        // Match either the written form or its canonical hex form.
         let canonical = seed_rule_to_string(&parsed);
         let before = self.pin.len();
-        self.pin.retain(|p| p != &canonical);
+        self.pin.retain(|p| p != reference && p != &canonical);
         Ok(self.pin.len() != before)
     }
 
@@ -615,16 +690,6 @@ fn validate_alias(alias: &str) -> Result<()> {
         bail!("alias must be lowercase [a-z0-9._-] and not look like a key: {alias:?}");
     }
     Ok(())
-}
-
-pub fn parse_seed_rule(s: &str, mode: Mode) -> Result<SeedRule> {
-    let r = ImageRef::parse_explicit(s)?;
-    Ok(SeedRule {
-        publisher: r.publisher,
-        name: r.name,
-        tag: r.tag,
-        mode,
-    })
 }
 
 pub fn seed_rule_to_string(r: &SeedRule) -> String {
@@ -775,5 +840,61 @@ pin = ["{alice}/app:0.9"]
         let back: Policy = toml::from_str(&toml::to_string(&p).unwrap()).unwrap();
         assert_eq!(back.seed, p.seed);
         assert_eq!(back.pin, p.pin);
+    }
+    #[test]
+    fn policy_domain_rules_keep_domain_form_and_resolve_via_mapping() {
+        let alice = Identity::generate().id();
+        let bob = Identity::generate().id();
+        let mut p = Policy::default();
+
+        // No mapping yet: a domain rule cannot be evaluated.
+        assert!(p.parse_publisher_arg("images.example.com").is_err());
+        assert!(p
+            .add_seed("images.example.com/app:1.0", Mode::Latest)
+            .is_err());
+
+        // The daemon records the mapping when the domain is resolved.
+        p.set_dns_mapping("images.example.com", &alice);
+        assert!(p
+            .add_seed("images.example.com/app:1.0", Mode::Latest)
+            .unwrap());
+        assert!(p.add_follow("images.example.com", Mode::Full).unwrap());
+        p.set_dns_mapping("blog.example.com", &bob);
+        p.pin.push("blog.example.com/post:2.0".to_string());
+
+        // Rules keep the human-readable domain form.
+        assert_eq!(p.seed[0].reference, "images.example.com/app:1.0");
+        assert_eq!(p.follow[0].publisher, "images.example.com");
+        assert!(p.pin.contains(&"blog.example.com/post:2.0".to_string()));
+
+        // Evaluation resolves through the mapping table.
+        let rules = p.seed_rules();
+        assert_eq!(rules[0].publisher, alice);
+        assert_eq!(rules[0].name, "app");
+        assert_eq!(rules[0].tag.as_deref(), Some("1.0"));
+        assert_eq!(p.follows(), vec![(alice, Mode::Full)]);
+        assert_eq!(p.pins()[0].publisher, bob);
+        assert!(p.publishers().contains(&alice));
+        assert!(p.publishers().contains(&bob));
+        assert!(p.is_pinned(&bob, "post", "2.0"));
+
+        // Removal works in domain form too.
+        assert!(p.remove_seed("images.example.com/app:1.0").unwrap());
+        assert!(p.remove_follow("images.example.com").unwrap());
+        assert!(p.remove_pin("blog.example.com/post:2.0").unwrap());
+        assert!(p.seed.is_empty() && p.follow.is_empty() && p.pin.is_empty());
+
+        // The dns table round-trips through policy.toml (and stays absent
+        // when empty, so old files are unchanged).
+        let text = toml::to_string(&Policy::default()).unwrap();
+        assert!(!text.contains("[dns]"));
+        p.set_dns_mapping("images.example.com", &alice);
+        let text = toml::to_string(&p).unwrap();
+        assert!(text.contains("images.example.com"));
+        let back: Policy = toml::from_str(&text).unwrap();
+        assert_eq!(
+            back.parse_publisher_arg("images.example.com").unwrap(),
+            alice
+        );
     }
 }

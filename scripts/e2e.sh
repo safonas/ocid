@@ -19,6 +19,7 @@ OCID="$BIN/ocid"
 CTL="$BIN/ocictl"
 PORT_A=${PORT_A:-15050}
 PORT_B=${PORT_B:-15051}
+DNS_PORT=${DNS_PORT:-15953}
 REG_A="127.0.0.1:$PORT_A"
 REG_B="127.0.0.1:$PORT_B"
 SRC_IMAGE=${SRC_IMAGE:-docker.io/library/alpine:latest}
@@ -86,6 +87,7 @@ cleanup() {
     [[ -n "${PID_A:-}" ]] && kill "$PID_A" 2>/dev/null || true
     [[ -n "${PID_B:-}" ]] && kill "$PID_B" 2>/dev/null || true
     [[ -n "${PID_C:-}" ]] && kill "$PID_C" 2>/dev/null || true
+    [[ -n "${DNSPID:-}" ]] && kill "$DNSPID" 2>/dev/null || true
     sleep 0.5
     # shellcheck disable=SC2046
     podman rmi -f $(podman images --format '{{.Repository}}:{{.Tag}}' | grep -E "^$REG_A/|^$REG_B/|^${REG_C:-unset}/" || true) >/dev/null 2>&1 || true
@@ -122,6 +124,10 @@ mkdir -p "$HOME_A" "$HOME_B"
 # init first so we can shorten the blob GC tick (daemon clamps it to >= 5s)
 ctl_a init >/dev/null
 sed -i 's/^blob_gc_interval_secs = .*/blob_gc_interval_secs = 5/' "$HOME_A/config.toml"
+# The DNS section below serves zones from a dnsmasq on loopback; point A's
+# resolver at it (default is the system resolver, which knows nothing of
+# the test zones). Appended after init so the file always has the key.
+echo "dns_nameserver = \"127.0.0.1:$DNS_PORT\"" >> "$HOME_A/config.toml"
 OCID_HOME="$HOME_A" RUST_LOG=ocid=debug,warn "$OCID" --no-relay --listen "$REG_A" >"$WORK/a.log" 2>&1 &
 PID_A=$!
 require "node A up" 15 curl -sf "http://$REG_A/v2/"
@@ -275,7 +281,133 @@ podman pull -q --tls-verify=false "$REG_B/alice/alpine:5" >/dev/null && ok "pull
 ctl_b untrack alice >/dev/null
 
 # ---------------------------------------------------------------------------
-# 6. referrers (oras)
+# 6. DNS publisher names (dnsmasq on loopback)
+# ---------------------------------------------------------------------------
+
+if command -v dnsmasq >/dev/null; then
+    log "DNS publisher names (dnsmasq zone on 127.0.0.1:$DNS_PORT)"
+    ZONE="images.ocid.test"
+    ZONE2="stale.ocid.test"
+
+    # Dotted self-names must keep working next to DNS resolution: with the
+    # resolver unreachable, `my.app` falls through to A's own namespace.
+    push_a "$SRC_IMAGE" "my.app"
+    podman pull -q --tls-verify=false "$REG_A/my.app" >/dev/null \
+        && ok "dotted self-name falls through when DNS is unreachable" || fail "dotted self-name (no server)"
+
+    # B publishes under a human name: sign the _ocid record with B's key.
+    REC_B=$(ctl_b dns-record "$ZONE" | awk -F'"' '/IN TXT/{print $2}')
+    assert_contains "dns-record prints a signed record for B" "$REC_B" "v=ocid1 k=$B ts="
+    dnsmasq --no-daemon --listen-address=127.0.0.1 --port="$DNS_PORT" --no-hosts --no-resolv \
+        --txt-record="_ocid.$ZONE,$REC_B" >"$WORK/dnsmasq.log" 2>&1 &
+    DNSPID=$!
+    # Wait until the port actually answers before the first lookup.
+    require "dnsmasq listening on 127.0.0.1:$DNS_PORT" 10 \
+        bash -c "exec 3<>/dev/udp/127.0.0.1/$DNS_PORT" 2>/dev/null \
+        || fail "dnsmasq did not start (see $WORK/dnsmasq.log)"
+    sleep 0.5
+
+    # Pull from A via B's DNS name: A rewrites images.ocid.test -> B's key
+    # and fetches the release from B on demand.
+    podman push -q --tls-verify=false "$SRC_IMAGE" "$REG_B/app:dns" >/dev/null
+    podman pull -q --tls-verify=false "$REG_A/$ZONE/app:dns" >/dev/null \
+        && ok "podman pull via DNS publisher name" || fail "pull via DNS name"
+
+    out=$(curl -s "http://$REG_A/_ocid/dns/resolve?zone=$ZONE")
+    assert_eq "resolve endpoint: the zone maps to B" "$B" "$(echo "$out" | jq -r .publisher)"
+    assert_eq "resolve endpoint: state pinned" "pinned" "$(echo "$out" | jq -r .state)"
+
+    # Policy in domain form: follow + seed by name. Do this while the zone
+    # is still pinned to B's key: the daemon resolves the domain (pin
+    # matches) and records the mapping, and policy.toml keeps the
+    # human-readable domain form.
+    ctl_a follow "$ZONE" >/dev/null \
+        && ok "follow by domain" || fail "follow by domain"
+    ctl_a seed "$ZONE/app:dns" >/dev/null \
+        && ok "seed by domain reference" || fail "seed by domain reference"
+    assert_contains "policy.toml keeps the domain form" \
+        "$(cat "$HOME_A/policy.toml")" "$ZONE"
+    assert_contains "policy.toml records the resolved key" \
+        "$(cat "$HOME_A/policy.toml")" "$B"
+    ctl_a policy | grep -q "$ZONE" \
+        && ok "ocictl policy lists the domain rule" || fail "policy lists domain rule"
+
+    # Restart A so the hijack leg below cannot be served from the in-memory
+    # lookup cache (the pin store is on disk and must survive).
+    kill "$PID_A"; wait "$PID_A" 2>/dev/null || true
+    OCID_HOME="$HOME_A" RUST_LOG=ocid=debug,warn "$OCID" --no-relay --listen "$REG_A" >>"$WORK/a.log" 2>&1 &
+    PID_A=$!
+    require "node A restarted" 15 curl -sf "http://$REG_A/v2/"
+    # The restart drops the positive cache; the first resolve re-queries DNS
+    # and must land on the pinned key (not the hijacker's).
+    out=$(curl -s "http://$REG_A/_ocid/dns/resolve?zone=$ZONE")
+    assert_eq "pin survives restart: still B, not the hijacker" "$B" "$(echo "$out" | jq -r .publisher)"
+
+    # A different key claiming a pinned zone is a hijack and must be loud;
+    # a record older than the freshness window is refused despite a valid
+    # signature.
+    HOME_F="$WORK/faker"; mkdir -p "$HOME_F"
+    OCID_HOME="$HOME_F" "$CTL" init >/dev/null
+    F=$(OCID_HOME="$HOME_F" "$CTL" whoami | awk '/^id/{print $2}')
+    REC_F=$(OCID_HOME="$HOME_F" "$CTL" dns-record "$ZONE" | awk -F'"' '/IN TXT/{print $2}')
+    HOME_S="$WORK/staler"; mkdir -p "$HOME_S"
+    OCID_HOME="$HOME_S" "$CTL" init >/dev/null
+    OLD_TS=$(( $(date +%s) - 32*24*3600 ))
+    REC_S=$(OCID_HOME="$HOME_S" "$CTL" dns-record --ts "$OLD_TS" "$ZONE2" | awk -F'"' '/IN TXT/{print $2}')
+    kill "$DNSPID"; wait "$DNSPID" 2>/dev/null || true
+    dnsmasq --no-daemon --listen-address=127.0.0.1 --port="$DNS_PORT" --no-hosts --no-resolv \
+        --txt-record="_ocid.$ZONE,$REC_F" --txt-record="_ocid.$ZONE2,$REC_S" >"$WORK/dnsmasq.log" 2>&1 &
+    DNSPID=$!
+    require "dnsmasq (hijack leg) listening" 10 \
+        bash -c "exec 3<>/dev/udp/127.0.0.1/$DNS_PORT" 2>/dev/null \
+        || fail "dnsmasq did not restart (see $WORK/dnsmasq.log)"
+    sleep 0.5
+
+    out=$(curl -s "http://$REG_A/v2/$ZONE/app/manifests/dns")
+    assert_contains "pinned zone hijack is rejected" "$out" "refusing to switch keys"
+    if podman pull -q --tls-verify=false "$REG_A/$ZONE/app:dns" >/dev/null 2>&1; then
+        fail "pull via a hijacked zone must fail"
+    else
+        ok "pull via a hijacked zone fails"
+    fi
+    out=$(curl -s "http://$REG_A/v2/$ZONE2/app/manifests/dns")
+    assert_contains "stale record is rejected" "$out" "is stale:"
+
+    # Rotation: unpin, re-resolve — the zone then maps to the new key, and
+    # the pin survives another daemon restart.
+    out=$(curl -sf -X POST "http://$REG_A/_ocid/dns/unpin" -H 'content-type: application/json' -d "{\"zone\":\"$ZONE\"}")
+    assert_contains "unpin reports removal" "$out" '"removed":true'
+    out=$(curl -s "http://$REG_A/_ocid/dns/resolve?zone=$ZONE")
+    assert_eq "re-resolve pins the new key" "$F" "$(echo "$out" | jq -r .publisher)"
+    assert_eq "fresh pin state" "new" "$(echo "$out" | jq -r .state)"
+    kill "$PID_A"; wait "$PID_A" 2>/dev/null || true
+    OCID_HOME="$HOME_A" RUST_LOG=ocid=debug,warn "$OCID" --no-relay --listen "$REG_A" >>"$WORK/a.log" 2>&1 &
+    PID_A=$!
+    require "node A restarted again" 15 curl -sf "http://$REG_A/v2/"
+    out=$(curl -s "http://$REG_A/_ocid/dns/resolve?zone=$ZONE")
+    assert_eq "pin survives daemon restarts" "$F" "$(echo "$out" | jq -r .publisher)"
+    assert_eq "state pinned after restart" "pinned" "$(echo "$out" | jq -r .state)"
+
+    # The CLI surface: resolve reports the pinned state, dns-unpin drops it.
+    out=$(ctl_a resolve "$ZONE")
+    assert_contains "ocictl resolve shows the pinned publisher" "$out" "$F"
+    assert_contains "ocictl resolve shows pinned state" "$out" "pinned"
+    out=$(ctl_a dns-unpin "$ZONE")
+    assert_contains "ocictl dns-unpin reports removal" "$out" "unpinned"
+    out=$(ctl_a resolve "$ZONE")
+    assert_eq "re-resolve after CLI unpin re-pins the same key" "$F" \
+        "$(echo "$out" | awk '/^publisher/{print $2}')"
+
+    # Clean up the domain-form policy rules so later sections see a
+    # pristine policy.
+    ctl_a unfollow "$ZONE" >/dev/null
+    ctl_a unseed "$ZONE/app:dns" >/dev/null
+else
+    skip "dnsmasq not installed; DNS publisher-name tests skipped"
+fi
+
+# ---------------------------------------------------------------------------
+# 7. referrers (oras)
 # ---------------------------------------------------------------------------
 
 if command -v oras >/dev/null; then
@@ -295,7 +427,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. TLS registry (config tls = "auto")
+# 8. TLS registry (config tls = "auto")
 # ---------------------------------------------------------------------------
 
 log "TLS registry"
@@ -333,7 +465,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 8. ocictl offline
+# 9. ocictl offline
 # ---------------------------------------------------------------------------
 
 log "ocictl works without a daemon"

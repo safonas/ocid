@@ -7,8 +7,8 @@ use clap::{Parser, Subcommand};
 use comfy_table::{presets::NOTHING, Table};
 use ocid_core::{
     api::{
-        AddPeerResp, AnnounceResp, GcReport, OkResp, PeerInfo, PolicyChangeResp, ReleaseInfo,
-        RmResp, Status, SyncResp,
+        AddPeerResp, AnnounceResp, DnsResolveResp, DnsUnpinReq, DnsUnpinResp, GcReport, OkResp,
+        PeerInfo, PolicyChangeResp, ReleaseInfo, RmResp, Status, SyncResp,
     },
     client::Client,
     config::{Config, Mode, Policy},
@@ -46,7 +46,17 @@ enum Command {
     DnsRecord {
         /// DNS zone this node's images will be served under.
         zone: String,
+        /// Sign with this unix timestamp instead of now (tests and
+        /// tooling; records older than the freshness window are rejected).
+        #[arg(long)]
+        ts: Option<u64>,
     },
+    /// Resolve a DNS publisher name against the running daemon: which
+    /// publisher it maps to, and the pin state (pins on first sight).
+    Resolve { zone: String },
+    /// Remove the locally pinned publisher key for a zone (deliberate
+    /// key rotation; the next resolve re-pins whatever the zone publishes).
+    DnsUnpin { zone: String },
     /// Show status of the running daemon.
     Status,
     /// Print this node's connection ticket (daemon must be running).
@@ -158,7 +168,9 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
     match command {
         Command::Init => init(paths),
         Command::Whoami => whoami(paths),
-        Command::DnsRecord { zone } => dns_record(paths, &zone),
+        Command::DnsRecord { zone, ts } => dns_record(paths, &zone, ts),
+        Command::Resolve { zone } => dns_resolve(paths, &zone).await,
+        Command::DnsUnpin { zone } => dns_unpin(paths, &zone).await,
         Command::Status => {
             let s: Status = client(paths)?.get("/_ocid/status").await?;
             println!("version    {}", s.version);
@@ -258,6 +270,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
                 );
                 sync_all(&c).await;
             } else {
+                offline_domain_check(&reference)?;
                 let id = Identity::load(paths)?;
                 let mut policy = Policy::load(paths)?;
                 let r = ImageRef::parse(&reference, &policy, &id.id())?;
@@ -297,6 +310,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
                     v.reference
                 );
             } else {
+                offline_domain_check(&reference)?;
                 let id = Identity::load(paths)?;
                 let mut policy = Policy::load(paths)?;
                 let r = ImageRef::parse(&reference, &policy, &id.id())?;
@@ -323,21 +337,23 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
                         &serde_json::json!({ "publisher": publisher, "mode": mode }),
                     )
                     .await?;
-                let p = parse_publisher(&v.reference)?;
+                // The daemon echoes the rule back in the form it stored
+                // (domain form kept when a DNS name was given).
                 println!(
-                    "{} {p} ({}) mode {mode}",
+                    "{} {} mode {mode}",
                     if v.changed {
                         "following"
                     } else {
                         "already following"
                     },
-                    did_key(&p)
+                    v.reference
                 );
                 sync_all(&c).await;
             } else {
+                offline_domain_check(&publisher)?;
                 let p = parse_publisher(&publisher)?;
                 let mut policy = Policy::load(paths)?;
-                let changed = policy.add_follow(&p, mode);
+                let changed = policy.add_follow(&p.to_string(), mode)?;
                 policy.save(paths)?;
                 println!(
                     "{} {p} ({}) mode {mode}",
@@ -371,6 +387,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
                 );
                 sync_all(&c).await;
             } else {
+                offline_domain_check(&reference)?;
                 let id = Identity::load(paths)?;
                 let mut policy = Policy::load(paths)?;
                 let r = ImageRef::parse(&reference, &policy, &id.id())?;
@@ -402,6 +419,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
                     v.reference
                 );
             } else {
+                offline_domain_check(&reference)?;
                 let id = Identity::load(paths)?;
                 let mut policy = Policy::load(paths)?;
                 let r = ImageRef::parse(&reference, &policy, &id.id())?;
@@ -427,19 +445,20 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
                         &serde_json::json!({ "publisher": publisher }),
                     )
                     .await?;
-                let p = parse_publisher(&v.reference)?;
                 println!(
-                    "{} {p}",
+                    "{} {}",
                     if v.changed {
                         "unfollowed"
                     } else {
                         "was not following"
-                    }
+                    },
+                    v.reference
                 );
             } else {
+                offline_domain_check(&publisher)?;
                 let p = parse_publisher(&publisher)?;
                 let mut policy = Policy::load(paths)?;
-                let removed = policy.remove_follow(&p);
+                let removed = policy.remove_follow(&p.to_string())?;
                 policy.save(paths)?;
                 println!(
                     "{} {p}",
@@ -567,12 +586,15 @@ fn whoami(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
-/// `ocictl dns-record <zone>` — print the signed TXT record binding `zone`
-/// to this node's publisher id. Fully offline: signs with the local
-/// identity; publishing into the DNS zone is the admin's job.
-fn dns_record(paths: &Paths, zone: &str) -> Result<()> {
+/// `ocictl dns-record [--ts <unix>] <zone>` — print the signed TXT record
+/// binding `zone` to this node's publisher id. Fully offline: signs with
+/// the local identity; publishing into the DNS zone is the admin's job.
+fn dns_record(paths: &Paths, zone: &str, ts: Option<u64>) -> Result<()> {
     let id = Identity::load(paths)?;
-    let rec = ocid_core::dns::DnsRecord::new(zone, &id)?;
+    let rec = match ts {
+        Some(ts) => ocid_core::dns::DnsRecord::sign_at(zone, &id, ts)?,
+        None => ocid_core::dns::DnsRecord::new(zone, &id)?,
+    };
     let cfg = Config::load(paths)?;
     let scheme = match cfg.tls {
         ocid_core::config::TlsMode::Auto => "https",
@@ -593,6 +615,67 @@ fn dns_record(paths: &Paths, zone: &str) -> Result<()> {
     println!("  ({}; did:key form {}).", id.id(), did_key(&id.id()));
     println!("Peers verify it and pin the key locally on first use; re-run");
     println!("and re-publish to refresh the timestamp when it ages out.");
+    Ok(())
+}
+
+/// `ocictl resolve <zone>` — ask the daemon what a publisher name maps to.
+/// Pins the key on first verified sight (TOFU); a mismatch or stale record
+/// is reported as an error, never silently trusted.
+async fn dns_resolve(paths: &Paths, zone: &str) -> Result<()> {
+    let c = client(paths)?;
+    // The zone is a validated DNS name (lowercase hostname charset), so it
+    // needs no percent-encoding; build the query string directly.
+    let resp: DnsResolveResp = c.get(&format!("/_ocid/dns/resolve?zone={zone}")).await?;
+    match resp.state.as_str() {
+        "new" | "pinned" => {
+            let publisher = resp.publisher.context("missing publisher")?;
+            println!("zone       {}", resp.zone);
+            println!("publisher  {publisher}");
+            println!("state      {} (verified, fresh, TOFU-pinned)", resp.state);
+            println!();
+            println!("pulls via:  podman pull <registry>/{zone}/<name>:<tag>");
+        }
+        "no-record" => {
+            println!("zone       {}", resp.zone);
+            println!("state      no record — falls through to the name rules");
+        }
+        "disabled" => {
+            println!("zone       {}", resp.zone);
+            println!("state      disabled (dns = \"off\" in config.toml)");
+        }
+        "error" => {
+            println!("zone       {}", resp.zone);
+            println!("state      error");
+            println!();
+            println!("{}", resp.detail.context("missing error detail")?);
+            println!();
+            println!(
+                "if this key change is intentional: ocictl dns-unpin {}",
+                resp.zone
+            );
+            bail!("DNS resolution failed for {}", resp.zone);
+        }
+        other => bail!("daemon returned unknown dns state {other:?}"),
+    }
+    Ok(())
+}
+
+/// `ocictl dns-unpin <zone>` — drop the TOFU pin (deliberate rotation).
+async fn dns_unpin(paths: &Paths, zone: &str) -> Result<()> {
+    let c = client(paths)?;
+    let resp: DnsUnpinResp = c
+        .post(
+            "/_ocid/dns/unpin",
+            &DnsUnpinReq {
+                zone: zone.to_string(),
+            },
+        )
+        .await?;
+    if resp.removed {
+        println!("unpinned {zone} — the next resolve re-pins whatever the zone publishes");
+    } else {
+        println!("no pin existed for {zone}");
+    }
     Ok(())
 }
 
@@ -709,6 +792,20 @@ async fn sync_all(c: &Client) {
 
 fn offline_note() {
     println!("(daemon not running; will take effect when it starts)");
+}
+
+/// Reject domain-form policy arguments on the offline path: without a
+/// daemon there is no DNS resolution, so a domain cannot be mapped to a
+/// publisher key here. The daemon resolves it (and pins it) when online.
+fn offline_domain_check(arg: &str) -> Result<()> {
+    let first = arg.split_once('/').map(|(f, _)| f).unwrap_or(arg);
+    if ocid_core::dns::is_domain_name(first) {
+        bail!(
+            "{first:?} is a DNS publisher name; run the daemon to resolve it \
+             (ocictl resolve {first}) or use the publisher id / an alias"
+        );
+    }
+    Ok(())
 }
 
 /// `"this tag"` for a tagged rule, `"mode <mode>"` otherwise: the canonical
