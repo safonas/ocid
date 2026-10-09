@@ -20,6 +20,7 @@ iroh-gossip = { workspace = true }
 iroh-tickets = { workspace = true }
 iroh-metrics = { workspace = true }
 iroh-mdns-address-lookup = { workspace = true }
+hickory-resolver = { workspace = true }
 n0-future = { workspace = true }
 blake3 = { workspace = true }
 

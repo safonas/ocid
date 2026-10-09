@@ -35,6 +35,7 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::task::AbortHandle;
 
 use crate::{
+    dns_resolver,
     metrics::{Exporter, Metrics},
     p2p::{
         self,
@@ -56,6 +57,9 @@ pub struct Node {
     lookup: MemoryLookup,
     downloader: Downloader,
     gossip: Gossip,
+    /// DNS publisher-name resolution (TOFU pins + lookup cache). The
+    /// registry consults it before the alias/self name rules.
+    pub dns: Arc<dns_resolver::DnsService>,
     /// Global membership topic.
     swarm: GossipSender,
     /// Per-publisher announcement topics we are subscribed to (always
@@ -220,6 +224,8 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
 
     let (events, _) = tokio::sync::broadcast::channel(512);
 
+    let dns = dns_resolver::DnsService::from_config(&config, paths.clone())?;
+
     let node = Arc::new(Node {
         paths: paths.clone(),
         identity,
@@ -231,6 +237,7 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
         lookup,
         downloader,
         gossip: gossip.clone(),
+        dns,
         swarm: swarm_tx,
         topics: Mutex::new(BTreeMap::new()),
         policy: RwLock::new(policy),
@@ -304,6 +311,15 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
     }
     if config.mdns {
         eprintln!("  mdns      on (_ocid._udp.local)");
+    }
+    if config.dns == config::DnsMode::On {
+        eprintln!(
+            "  dns       on ({}  publisher names)",
+            config
+                .dns_nameserver
+                .as_deref()
+                .unwrap_or("system resolver")
+        );
     }
     eprintln!("  ticket    {}", node.ticket());
     eprintln!("  home      {}", paths.home.display());
@@ -435,81 +451,148 @@ impl Node {
     }
 
     pub async fn seed(self: &Arc<Self>, reference: &str, mode: Mode) -> Result<PolicyChangeResp> {
+        let (rule, resolved) = self.resolve_rule(reference).await?;
+        if resolved.publisher == self.id() {
+            bail!("{resolved} is published by this node; it is always seeded");
+        }
         self.mutate_policy(|p| {
-            let r = ImageRef::parse(reference, p, &self.id())?;
-            if r.publisher == self.id() {
-                bail!("{r} is published by this node; it is always seeded");
+            if let Some(zone) = domain_slot(&rule) {
+                p.set_dns_mapping(zone, &resolved.publisher);
             }
-            let changed = p.add_seed(&r.to_string(), mode)?;
+            let changed = p.add_seed(&rule, mode)?;
             Ok(PolicyChangeResp {
                 changed,
-                reference: r.to_string(),
+                reference: rule,
             })
         })
         .await
     }
 
     pub async fn unseed(self: &Arc<Self>, reference: &str) -> Result<PolicyChangeResp> {
+        let (rule, _resolved) = self.resolve_rule(reference).await?;
         self.mutate_policy(|p| {
-            let r = ImageRef::parse(reference, p, &self.id())?;
-            let changed = p.remove_seed(&r.to_string())?;
+            let changed = p.remove_seed(&rule)?;
             Ok(PolicyChangeResp {
                 changed,
-                reference: r.to_string(),
+                reference: rule,
             })
         })
         .await
     }
 
     pub async fn follow(self: &Arc<Self>, publisher: &str, mode: Mode) -> Result<PolicyChangeResp> {
+        let (rule, pubs) = self.resolve_publisher_rule(publisher).await?;
         self.mutate_policy(|p| {
-            let pubs = parse_publisher(publisher)?;
-            let changed = p.add_follow(&pubs, mode);
+            if ocid_core::dns::is_domain_name(&rule) {
+                p.set_dns_mapping(&rule, &pubs);
+            }
+            let changed = p.add_follow(&rule, mode)?;
             Ok(PolicyChangeResp {
                 changed,
-                reference: pubs.to_string(),
+                reference: rule,
             })
         })
         .await
     }
 
     pub async fn unfollow(self: &Arc<Self>, publisher: &str) -> Result<PolicyChangeResp> {
+        let (rule, _pubs) = self.resolve_publisher_rule(publisher).await?;
         self.mutate_policy(|p| {
-            let pubs = parse_publisher(publisher)?;
-            let changed = p.remove_follow(&pubs);
+            let changed = p.remove_follow(&rule)?;
             Ok(PolicyChangeResp {
                 changed,
-                reference: pubs.to_string(),
+                reference: rule,
             })
         })
         .await
     }
 
     pub async fn pin(self: &Arc<Self>, reference: &str) -> Result<PolicyChangeResp> {
+        let (rule, resolved) = self.resolve_rule(reference).await?;
+        if resolved.tag.is_none() {
+            bail!("a pin needs a tag: {resolved}:<tag>");
+        }
         self.mutate_policy(|p| {
-            let r = ImageRef::parse(reference, p, &self.id())?;
-            if r.tag.is_none() {
-                bail!("a pin needs a tag: {r}:<tag>");
+            if let Some(zone) = domain_slot(&rule) {
+                p.set_dns_mapping(zone, &resolved.publisher);
             }
-            let changed = p.add_pin(&r.to_string())?;
+            let changed = p.add_pin(&rule)?;
             Ok(PolicyChangeResp {
                 changed,
-                reference: r.to_string(),
+                reference: rule,
             })
         })
         .await
     }
 
     pub async fn unpin(self: &Arc<Self>, reference: &str) -> Result<PolicyChangeResp> {
+        let (rule, _resolved) = self.resolve_rule(reference).await?;
         self.mutate_policy(|p| {
-            let r = ImageRef::parse(reference, p, &self.id())?;
-            let changed = p.remove_pin(&r.to_string())?;
+            let changed = p.remove_pin(&rule)?;
             Ok(PolicyChangeResp {
                 changed,
-                reference: r.to_string(),
+                reference: rule,
             })
         })
         .await
+    }
+
+    /// Resolve a policy rule (`<publisher>/<name>[:<tag>]`) that may carry
+    /// a DNS publisher name in the publisher slot. Returns the rule to
+    /// persist (domain form kept) and its fully resolved form. Hex,
+    /// `did:key`, aliases and implicit self pass through unchanged.
+    async fn resolve_rule(self: &Arc<Self>, reference: &str) -> Result<(String, ImageRef)> {
+        let policy = self.policy().await;
+        if let Some((zone, _)) = reference.split_once('/') {
+            if ocid_core::dns::is_domain_name(zone) {
+                let publisher = self.resolve_zone_publisher(zone).await?;
+                let (name, tag) = ocid_core::oci::split_tag(&reference[zone.len() + 1..])?;
+                return Ok((
+                    reference.to_string(),
+                    ImageRef {
+                        publisher,
+                        name,
+                        tag,
+                    },
+                ));
+            }
+        }
+        let r = ImageRef::parse(reference, &policy, &self.id())
+            .with_context(|| format!("invalid reference {reference:?}"))?;
+        Ok((reference.to_string(), r))
+    }
+
+    /// Resolve a bare publisher argument for follow/unfollow: hex, did:key,
+    /// alias, or a DNS publisher name. Returns the argument to persist
+    /// (domain form kept) and the resolved publisher id.
+    async fn resolve_publisher_rule(self: &Arc<Self>, arg: &str) -> Result<(String, PublisherId)> {
+        if let Ok(p) = parse_publisher(arg) {
+            return Ok((arg.to_string(), p));
+        }
+        let policy = self.policy().await;
+        if let Some(ocid_core::config::AliasTarget::Publisher(p)) = policy.resolve_alias(arg) {
+            return Ok((arg.to_string(), p));
+        }
+        if ocid_core::dns::is_domain_name(arg) {
+            let p = self.resolve_zone_publisher(arg).await?;
+            return Ok((arg.to_string(), p));
+        }
+        Err(anyhow!("not a publisher id, alias, or domain: {arg:?}"))
+    }
+
+    /// Resolve a zone to its publisher via DNS; pins on first verified
+    /// sight (TOFU) and refuses hijacks/stale records loudly.
+    async fn resolve_zone_publisher(self: &Arc<Self>, zone: &str) -> Result<PublisherId> {
+        match self.dns.resolve_zone(zone).await {
+            Ok(crate::dns_resolver::ZoneOutcome::Resolved { publisher, .. }) => Ok(publisher),
+            Ok(crate::dns_resolver::ZoneOutcome::NoRecord) => {
+                bail!("no _ocid DNS record for {zone:?}")
+            }
+            Ok(crate::dns_resolver::ZoneOutcome::Disabled) => {
+                bail!("DNS resolution is disabled (dns = \"off\"); cannot resolve {zone:?}")
+            }
+            Err(e) => Err(e.context(format!("DNS resolution failed for {zone:?}"))),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1421,4 +1504,10 @@ impl Node {
         }
         Ok(n)
     }
+}
+
+/// The DNS zone a policy rule carries in its publisher slot, if any.
+fn domain_slot(rule: &str) -> Option<&str> {
+    let (first, _) = rule.split_once('/')?;
+    ocid_core::dns::is_domain_name(first).then_some(first)
 }

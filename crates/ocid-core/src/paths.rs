@@ -7,6 +7,7 @@
 //! ├── config.toml                node configuration
 //! ├── policy.toml                seeding policy: seeds, follows, aliases
 //! ├── peers.json                 known peer addresses (bootstrap)
+//! ├── dns-pins.json              TOFU pins for DNS publisher records
 //! ├── tls/                       self-signed CA + server cert (tls = "auto")
 //! ├── blobs/                     iroh-blobs FsStore (BLAKE3 content-addressed)
 //! ├── index/
@@ -72,6 +73,10 @@ impl Paths {
     }
     pub fn peers(&self) -> PathBuf {
         self.home.join("peers.json")
+    }
+    /// TOFU pins for DNS publisher records (see `dns.rs`).
+    pub fn dns_pins(&self) -> PathBuf {
+        self.home.join("dns-pins.json")
     }
     pub fn tls_dir(&self) -> PathBuf {
         self.home.join("tls")

@@ -395,10 +395,9 @@ impl App {
             return;
         };
         let p = r.summary.publisher;
-        let msg = if self.policy.add_follow(&p, Mode::Latest) {
-            format!("following {} (latest)", short(&p))
-        } else {
-            format!("already following {}", short(&p))
+        let msg = match self.policy.add_follow(&p.to_string(), Mode::Latest) {
+            Ok(true) => format!("following {} (latest)", short(&p)),
+            _ => format!("already following {}", short(&p)),
         };
         self.report("FOLLOW", msg, Color::Cyan);
         self.reload_policy().await;

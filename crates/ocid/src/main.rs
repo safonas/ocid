@@ -1,6 +1,7 @@
 //! `ocid` — the daemon. Runs the p2p endpoint, replication, and the local
 //! OCI registry. Control it with `ocictl`.
 
+mod dns_resolver;
 mod metrics;
 mod node;
 mod p2p;

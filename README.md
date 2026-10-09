@@ -178,9 +178,17 @@ Registry paths cannot contain uppercase, so the publisher appears as the
 | form | example | meaning |
 |---|---|---|
 | explicit | `localhost:5050/<hex>/app:1.0` | publisher `<hex>`, image `app` |
+| **DNS name** | `localhost:5050/images.example.com/app:1.0` | publisher from the signed `_ocid` TXT record (TOFU-pinned) |
 | publisher alias | `localhost:5050/alice/app:1.0` | after `ocictl track <hex> --as alice` |
 | image alias | `localhost:5050/team-app:1.0` | after `ocictl track <hex>/app --as team-app` |
 | implicit | `localhost:5050/app:1.0` | **your own** publisher (what you push to) |
+
+Publish your own human name with `ocictl dns-record images.example.com`
+(prints the signed TXT line to put at `_ocid.images.example.com`), then
+pulls by `images.example.com/…` resolve to your key — verified and pinned
+on first sight (`ocictl resolve <zone>`, rotate with `ocictl dns-unpin`).
+See [docs/dns-publisher-names.md](docs/dns-publisher-names.md) for the
+full guide (record format, trust model, configuration, troubleshooting).
 
 ## Policy: what a node keeps
 
@@ -230,11 +238,14 @@ ocictl policy                               print policy.toml
 ocictl sync [<peer>]                        replicate from peers now
 ocictl rm <ref>[:<tag>] [--all]             drop a release locally (not propagated)
 ocictl gc [--dry-run] [--force]             prune + reclaim blobs now
+ocictl dns-record <zone>                    print the signed _ocid TXT record for a zone
+ocictl resolve <zone>                       show what a DNS name maps to (pins on first sight)
+ocictl dns-unpin <zone>                     drop the pinned key (deliberate rotation)
 ```
 
-`<ref>` is `[<publisher>/]<name>[:<tag>]`; `<publisher>` is hex, `did:key`
-or an alias. `--listen`/`--no-relay`/`--no-metrics`/`--tls` are persisted into
-`config.toml` so `ocictl` finds the daemon.
+`<ref>` is `[<publisher>/]<name>[:<tag>]`; `<publisher>` is hex, `did:key`,
+an alias, or a DNS publisher name. `--listen`/`--no-relay`/`--no-metrics`/`--tls`
+are persisted into `config.toml` so `ocictl` finds the daemon.
 
 ## Registry surface
 
@@ -265,8 +276,9 @@ tooling at that CA — podman's `certs.d` or `--cert-dir`, curl's `--cacert`,
 
 ```
 secret.key                      ed25519 secret (0600)
-config.toml                     listen, tls, relay, p2p_port, mdns, metrics, gc_*_secs
-policy.toml                     follow / seed / pin / alias
+config.toml                     listen, tls, relay, p2p_port, mdns, metrics, gc_*_secs, dns*
+policy.toml                     follow / seed / pin / alias / [dns] mapping
+dns-pins.json                   TOFU pin store for DNS publisher names
 peers.json                      known peer addresses (bootstrap)
 tls/                            self-signed CA + server cert (tls = "auto")
 blobs/                          iroh-blobs store (BLAKE3-addressed, verified, own GC)
@@ -275,6 +287,15 @@ index/releases/<pub>/<name>/<tag>.json      signed release records
 index/referrers/<subject>/<digest>.json     referrer manifests by subject
 uploads/                        in-flight registry uploads
 ```
+
+## Documentation
+
+| guide | audience |
+|---|---|
+| [docs/dns-publisher-names.md](docs/dns-publisher-names.md) | users — human-readable publisher names via DNS |
+| [docs/development.md](docs/development.md) | contributors — `just` recipes, e2e, packaging |
+| [docs/DESIGN.md](docs/DESIGN.md) | architects — data models, trust boundaries, sequences |
+| [docs/pitch.md](docs/pitch.md) | everyone — the why, in one page |
 
 ## Development
 
