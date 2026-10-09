@@ -60,31 +60,35 @@ Slot it directly after the Podman Desktop extension and alongside/before
 
 ## Status
 
-**gh#96 open, all checks green (mergeStateStatus: CLEAN)** 2026-10-09 —
-core + daemon wiring in 4 commits on `feat/dns-records`:
+**SHIPPED in v0.8.0-rc.1** 2026-10-09 — gh#96 merged to main (9e1903c).
+All 8 acceptance criteria from gh#16 met:
 
-- record format + TOFU pins + `is_domain_name` gate + `ocictl dns-record`
-  (8 unit tests)
+- [x] Record type: parse/serialize, canonical payload, Ed25519 verify, reject bad sig (8 unit tests in `dns.rs`)
+- [x] TOFU pin store: pin on first use, mismatch rejected loudly, explicit re-pin flow (unit + e2e)
+- [x] Freshness window enforcement (unit + e2e stale-record leg)
+- [x] Path-resolution precedence incl. domain branch (`domain_segments_fall_through_to_existing_rules` unit test + e2e)
+- [x] Offline resolution from pins (pin survives daemon restart, e2e)
+- [x] `ocictl resolve` + domain refs in follow/seed/pin (e2e CLI legs)
+- [x] e2e: dnsmasq zone; two-node pull by domain, follow by domain (97 assertions)
+- [x] `docs/DESIGN.md` naming diagram + trust boundaries; README naming table gains the domain row; `docs/dns-publisher-names.md` user guide
+
+Feature breakdown (gh#96, 6 commits on `feat/dns-records`):
+
+- core: record format + TOFU pins + `is_domain_name` gate + `ocictl dns-record`
 - daemon: hickory resolver with TTL/negative cache, registry `resolve()`
   DNS pre-step, `/_ocid/dns/resolve` + `/_ocid/dns/unpin`,
   `ocictl resolve` / `ocictl dns-unpin`
 - policy domain forms: follow/seed/pin accept domains; `policy.toml`
   keeps the domain form and records the resolved key in a `[dns]` mapping
   table (evaluation never needs DNS at load time)
-- dnsmasq e2e: pull by name, hijack rejection, stale rejection,
+- e2e: dnsmasq zone — pull by name, hijack rejection, stale rejection,
   pin-survives-restart, rotation via unpin, policy domain forms, CLI
-  surface — 97 assertions green
+  surface (97 assertions green)
 - docs: DESIGN.md naming diagram + trust boundaries, README naming
-  table + CLI reference
+  table + CLI reference, `docs/dns-publisher-names.md` user guide
 - CodeQL: scoped `rust/cleartext-logging` exclusion for
   `crates/ocictl/src/main.rs` (the CLI prints the node's own public key
   on purpose — it is the product, not a secret)
-
-**User docs** 2026-10-09 — `docs/dns-publisher-names.md`: full user guide
-(record format, trust model, publisher/consumer workflows, config, HTTP
-API, troubleshooting, security considerations). Linked from README
-(naming section + Documentation table + on-disk layout) and DESIGN.md
-(Testing section). Ready for external sharing.
 
 PR3 (follow-up): pkarr/discovery-hint evaluation (one DNS
 name for identity + reachability).

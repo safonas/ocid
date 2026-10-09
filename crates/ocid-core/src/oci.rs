@@ -354,6 +354,17 @@ pub fn resolve_repo(
         return Ok((parse_publisher(first)?, name.to_string()));
     }
 
+    // DNS publisher name: resolve through the policy's dns mapping table
+    // (populated by the daemon when a domain-form rule was saved). The
+    // daemon's registry pre-step handles live DNS lookups; here we only
+    // consult the recorded mapping so policy evaluation works offline.
+    if let Some(rest) = rest {
+        if let Ok(p) = policy.parse_publisher_arg(first) {
+            validate_name(rest)?;
+            return Ok((p, rest.to_string()));
+        }
+    }
+
     if let Some(AliasTarget::Image { publisher, name }) = policy.resolve_alias(repo) {
         return Ok((publisher, name));
     }
@@ -422,6 +433,48 @@ mod tests {
             (r.publisher, r.name.as_str(), r.tag.as_deref()),
             (alice.id(), "x", Some("z"))
         );
+    }
+
+    #[test]
+    fn domain_segments_fall_through_to_existing_rules() {
+        // The DNS branch lives in the daemon (registry::resolve_dns_name);
+        // ocid-core's resolve_repo must leave domain-shaped first segments
+        // to the alias/self rules so a miss falls through unchanged.
+        let me = Identity::generate();
+        let alice = Identity::generate();
+        let mut policy = Policy::default();
+        policy.set_alias("alice", &alice.id().to_string()).unwrap();
+
+        // A domain with a mapping resolves through the policy dns table.
+        policy.set_dns_mapping("images.example.com", &alice.id());
+        let r = ImageRef::parse("images.example.com/app:1.0", &policy, &me.id()).unwrap();
+        assert_eq!(
+            (r.publisher, r.name.as_str(), r.tag.as_deref()),
+            (alice.id(), "app", Some("1.0"))
+        );
+
+        // A domain without a mapping and without an alias is a self-name
+        // (dotted image names like my.app keep working).
+        let r = ImageRef::parse("my.app:2.0", &policy, &me.id()).unwrap();
+        assert_eq!(
+            (r.publisher, r.name.as_str(), r.tag.as_deref()),
+            (me.id(), "my.app", Some("2.0"))
+        );
+
+        // A domain-form first segment with a path and no mapping falls
+        // through to implicit self: `unknown.example.com/app` becomes
+        // image name `unknown.example.com/app` under our own publisher
+        // (the daemon's registry pre-step tries a live DNS lookup first;
+        // a miss means the name rules take over unchanged).
+        let r = ImageRef::parse("unknown.example.com/app", &policy, &me.id()).unwrap();
+        assert_eq!(
+            (r.publisher, r.name.as_str()),
+            (me.id(), "unknown.example.com/app")
+        );
+        // With a mapping recorded, the same form resolves to the publisher.
+        policy.set_dns_mapping("unknown.example.com", &alice.id());
+        let r = ImageRef::parse("unknown.example.com/app", &policy, &me.id()).unwrap();
+        assert_eq!((r.publisher, r.name.as_str()), (alice.id(), "app"));
     }
 
     #[test]

@@ -327,6 +327,8 @@ Known limitations:
 * delegation / multi-key publishers is deferred: one key is one publisher
 * relay and public discovery use the n0 infrastructure by default; use
   `--no-relay` and tickets/mDNS for fully offline swarms
+* DNS publisher names require a DNS zone you control; TOFU pins are
+  per-machine (a fresh node pins on first verified resolution)
 * `ocictl … | head` prints a broken-pipe panic (SIGPIPE is not reset)
 
 Feedback is most useful as a focused issue: hardware / network, exact
