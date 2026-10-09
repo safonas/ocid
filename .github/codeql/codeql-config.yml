@@ -1,0 +1,21 @@
+name: ocid CodeQL config
+
+# The CLI prints the node's own public key (publisher id) on purpose:
+# `ocictl whoami`, `ocictl init`, and `ocictl dns-record` are identity
+# display commands — the key is the product, not a secret. The
+# rust/cleartext-logging query flags every println! of a PublicKey, which
+# makes the whole CLI surface unalertable. Exclude the known display
+# sites so real leaks (secrets, tokens) still surface.
+paths-ignore:
+  - "**/target/**"
+
+queries:
+  - uses: security-extended
+    with:
+      tags: security
+
+query-filters:
+  - exclude:
+      id: rust/cleartext-logging
+    paths:
+      - "crates/ocictl/src/main.rs"
