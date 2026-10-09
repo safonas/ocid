@@ -1,6 +1,6 @@
 # DNS Publisher Records (human names instead of hex)
 
-> **Priority 02 · Tier 1 — adoption:** names are marketing; kills the hex-soup UX; cheap and offline-testable. Tracked in [#16](https://github.com/safonas/ocid/issues/16) (mirrored: `rad:f211a100`).
+> **Priority 02 · Tier 1 — adoption:** names are marketing; kills the hex-soup UX; cheap and offline-testable. Tracked in [#16](https://github.com/safonas/ocid/issues/16) (mirrored: `rad:f211a100`). **SHIPPED** — see Status below.
 
 ## Context
 Registry paths cannot contain uppercase and publisher identity is a raw
@@ -90,5 +90,7 @@ Feature breakdown (gh#96, 6 commits on `feat/dns-records`):
   `crates/ocictl/src/main.rs` (the CLI prints the node's own public key
   on purpose — it is the product, not a secret)
 
-PR3 (follow-up): pkarr/discovery-hint evaluation (one DNS
-name for identity + reachability).
+Follow-up (post-v0.8.0): pkarr/discovery-hint evaluation (one DNS
+name for identity + reachability — `relay=`/`seed=` fields so
+`ocictl connect images.example.com` bootstraps the swarm from the
+same record).
