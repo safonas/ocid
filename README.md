@@ -187,6 +187,8 @@ Publish your own human name with `ocictl dns-record images.example.com`
 (prints the signed TXT line to put at `_ocid.images.example.com`), then
 pulls by `images.example.com/…` resolve to your key — verified and pinned
 on first sight (`ocictl resolve <zone>`, rotate with `ocictl dns-unpin`).
+See [docs/dns-publisher-names.md](docs/dns-publisher-names.md) for the
+full guide (record format, trust model, configuration, troubleshooting).
 
 ## Policy: what a node keeps
 
@@ -274,8 +276,9 @@ tooling at that CA — podman's `certs.d` or `--cert-dir`, curl's `--cacert`,
 
 ```
 secret.key                      ed25519 secret (0600)
-config.toml                     listen, tls, relay, p2p_port, mdns, metrics, gc_*_secs
-policy.toml                     follow / seed / pin / alias
+config.toml                     listen, tls, relay, p2p_port, mdns, metrics, gc_*_secs, dns*
+policy.toml                     follow / seed / pin / alias / [dns] mapping
+dns-pins.json                   TOFU pin store for DNS publisher names
 peers.json                      known peer addresses (bootstrap)
 tls/                            self-signed CA + server cert (tls = "auto")
 blobs/                          iroh-blobs store (BLAKE3-addressed, verified, own GC)
@@ -284,6 +287,15 @@ index/releases/<pub>/<name>/<tag>.json      signed release records
 index/referrers/<subject>/<digest>.json     referrer manifests by subject
 uploads/                        in-flight registry uploads
 ```
+
+## Documentation
+
+| guide | audience |
+|---|---|
+| [docs/dns-publisher-names.md](docs/dns-publisher-names.md) | users — human-readable publisher names via DNS |
+| [docs/development.md](docs/development.md) | contributors — `just` recipes, e2e, packaging |
+| [docs/DESIGN.md](docs/DESIGN.md) | architects — data models, trust boundaries, sequences |
+| [docs/pitch.md](docs/pitch.md) | everyone — the why, in one page |
 
 ## Development
 

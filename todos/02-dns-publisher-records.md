@@ -80,5 +80,11 @@ core + daemon wiring in 4 commits on `feat/dns-records`:
   `crates/ocictl/src/main.rs` (the CLI prints the node's own public key
   on purpose — it is the product, not a secret)
 
-PR3 (follow-up): docs polish + pkarr/discovery-hint evaluation (one DNS
+**User docs** 2026-10-09 — `docs/dns-publisher-names.md`: full user guide
+(record format, trust model, publisher/consumer workflows, config, HTTP
+API, troubleshooting, security considerations). Linked from README
+(naming section + Documentation table + on-disk layout) and DESIGN.md
+(Testing section). Ready for external sharing.
+
+PR3 (follow-up): pkarr/discovery-hint evaluation (one DNS
 name for identity + reachability).

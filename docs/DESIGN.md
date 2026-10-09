@@ -454,7 +454,14 @@ The Homebrew formula template lives in `packaging/brew/ocid.rb` — the tap
   them with podman/curl/ocictl (and oras if present): publish, replicate,
   run a container from the replica, on-demand pull, Range/DELETE/metrics,
   follow/seed/pin windows with pruning and topic joins, aliases, GC, offline
-  `ocictl`.
+  `ocictl`, DNS publisher names (dnsmasq zone: pull by domain, hijack
+  rejection, stale rejection, pin persistence, rotation).
+
+## User documentation
+
+* [dns-publisher-names.md](dns-publisher-names.md) — DNS publisher names:
+  record format, trust model, publisher/consumer workflows, configuration,
+  HTTP API, troubleshooting.
 
 ## Deferred
 
