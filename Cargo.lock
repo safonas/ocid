@@ -3003,7 +3003,7 @@ dependencies = [
 
 [[package]]
 name = "ocictl"
-version = "0.7.1"
+version = "0.8.0-alpha.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3018,7 +3018,7 @@ dependencies = [
 
 [[package]]
 name = "ocid"
-version = "0.7.1"
+version = "0.8.0-alpha.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -3050,7 +3050,7 @@ dependencies = [
 
 [[package]]
 name = "ocid-core"
-version = "0.7.1"
+version = "0.8.0-alpha.1"
 dependencies = [
  "anyhow",
  "bs58",
@@ -3071,7 +3071,7 @@ dependencies = [
 
 [[package]]
 name = "ocitop"
-version = "0.7.1"
+version = "0.8.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
