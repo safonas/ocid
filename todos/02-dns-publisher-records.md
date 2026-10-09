@@ -60,14 +60,25 @@ Slot it directly after the Podman Desktop extension and alongside/before
 
 ## Status
 
-**PR1 merged-pending (gh#96, `feat/dns-records`)** 2026-10-09 — core landed:
-record format + TOFU pins + `is_domain_name` gate + `ocictl dns-record`
-(8 unit tests). **PR2** (same branch, uncommitted work in progress) —
-daemon wiring: hickory resolver with TTL/negative cache, registry
-`resolve()` DNS pre-step, `/_ocid/dns/resolve` + `/_ocid/dns/unpin`,
-`ocictl resolve` / `ocictl dns-unpin`, policy domain forms (follow/seed/
-pin/track accept domains; `policy.toml` keeps the domain form and records
-the resolved key in a `[dns]` mapping table), dnsmasq e2e (pull by name,
-hijack rejection, stale rejection, pin-survives-restart, rotation),
-docs (DESIGN.md naming diagram + trust boundaries, README naming table +
-CLI). PR3 (follow-up): docs polish + pkarr/discovery-hint evaluation.
+**gh#96 open, all checks green (mergeStateStatus: CLEAN)** 2026-10-09 —
+core + daemon wiring in 4 commits on `feat/dns-records`:
+
+- record format + TOFU pins + `is_domain_name` gate + `ocictl dns-record`
+  (8 unit tests)
+- daemon: hickory resolver with TTL/negative cache, registry `resolve()`
+  DNS pre-step, `/_ocid/dns/resolve` + `/_ocid/dns/unpin`,
+  `ocictl resolve` / `ocictl dns-unpin`
+- policy domain forms: follow/seed/pin accept domains; `policy.toml`
+  keeps the domain form and records the resolved key in a `[dns]` mapping
+  table (evaluation never needs DNS at load time)
+- dnsmasq e2e: pull by name, hijack rejection, stale rejection,
+  pin-survives-restart, rotation via unpin, policy domain forms, CLI
+  surface — 97 assertions green
+- docs: DESIGN.md naming diagram + trust boundaries, README naming
+  table + CLI reference
+- CodeQL: scoped `rust/cleartext-logging` exclusion for
+  `crates/ocictl/src/main.rs` (the CLI prints the node's own public key
+  on purpose — it is the product, not a secret)
+
+PR3 (follow-up): docs polish + pkarr/discovery-hint evaluation (one DNS
+name for identity + reachability).
