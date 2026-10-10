@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '@podman-desktop/ui-svelte';
+  import { Button, Checkbox } from '@podman-desktop/ui-svelte';
   import { onState, sendAction } from './api';
   import type { StateSnapshot } from '../../src/types';
   import StatusHeader from './lib/StatusHeader.svelte';
@@ -37,6 +37,16 @@
       Collect
     </Button>
     <Button type="secondary" onclick={() => sendAction({ kind: 'announce' })}>Announce</Button>
+    {#if snap.setup?.stoppable}
+      <Button type="danger" onclick={() => sendAction({ kind: 'stop-daemon' })}>Stop daemon</Button>
+    {/if}
+    {#if snap.setup?.bundled}
+      <Checkbox
+        checked={snap.setup.keepDaemonAlive}
+        onclick={(value) => sendAction({ kind: 'set-keep-alive', value })}>
+        Keep daemon alive
+      </Checkbox>
+    {/if}
   {:else}
     <span class="badge err">daemon down</span>
   {/if}
@@ -74,7 +84,7 @@
   {:else if tab === 'releases'}
     <ReleasesTable releases={snap.releases ?? []} status={snap.status} />
   {:else if tab === 'peers'}
-    <PeersList peers={snap.peers ?? []} />
+    <PeersList peers={snap.peers ?? []} status={snap.status} />
   {:else}
     <EventsLog events={snap.events} />
   {/if}

@@ -113,6 +113,8 @@ export type Action =
   | { kind: 'unpin'; reference: string }
   | { kind: 'register-registry' }
   | { kind: 'start-daemon' }
+  | { kind: 'stop-daemon' }
+  | { kind: 'set-keep-alive'; value: boolean }
   | { kind: 'set-auto-pull'; value: boolean }
   | { kind: 'copy'; text: string };
 
@@ -143,6 +145,9 @@ export interface SetupState {
   bundled: boolean;
   /** Advanced ocid.keepDaemonAlive: the pod outlives the extension. */
   keepDaemonAlive: boolean;
+  /** Whether the extension can stop the running daemon (its pod, or a
+   *  PATH daemon it spawned this session) — drives the Stop button. */
+  stoppable?: boolean;
   /** Whether the registry is served over https (daemon tls = "auto"). */
   tls: boolean;
   /** Whether new followed releases are pulled into podman automatically. */

@@ -38,6 +38,14 @@ interface Dependencies {
   registerRegistry?: () => Promise<void>;
   /** Start the daemon (found via `setup().ocidPath`); throws when absent. */
   startDaemon?: () => Promise<void>;
+  /** Stop the daemon this extension started (bundled pod, or the PATH
+   *  binary it spawned); throws when the daemon is not ours to stop. */
+  stopDaemon?: () => Promise<void>;
+  /** Persist the keep-daemon-alive preference (ocid.keepDaemonAlive). */
+  setKeepAlive?: (value: boolean) => Promise<void>;
+  /** Fired once per down→up daemon transition; the host side refreshes
+   *  what it may stop (deliberately not every poll). */
+  onDaemonUp?: () => void;
   /** Copy text to the system clipboard. The webview cannot do this itself:
    *  PD webviews are not secure contexts, so `navigator.clipboard` is
    *  unavailable and in-page copy silently no-ops. */
@@ -93,6 +101,7 @@ export class DashboardState {
         this.deps.setup().catch(() => undefined),
       ]);
       this.transfers.prune();
+      const wasUp = this.snapshot.daemon;
       this.snapshot = {
         daemon: true,
         status,
@@ -103,6 +112,7 @@ export class DashboardState {
         setup,
         error: undefined,
       };
+      if (!wasUp) this.deps.onDaemonUp?.();
       this.push();
     } catch (e) {
       const wasUp = this.snapshot.daemon;
@@ -268,6 +278,22 @@ export class DashboardState {
           detail = 'daemon starting — it will appear here within a few seconds';
           break;
         }
+        case 'stop-daemon': {
+          if (!this.deps.stopDaemon) {
+            throw new Error('daemon stop is not available');
+          }
+          await this.deps.stopDaemon();
+          detail = 'daemon stopped';
+          break;
+        }
+        case 'set-keep-alive': {
+          if (!this.deps.setKeepAlive) {
+            throw new Error('keep-alive is not available');
+          }
+          await this.deps.setKeepAlive(action.value);
+          detail = `the daemon ${action.value ? 'keeps running' : 'stops'} when the extension stops`;
+          break;
+        }
         case 'set-auto-pull': {
           if (!this.deps.setAutoPull) {
             throw new Error('auto-pull is not available');
@@ -281,9 +307,8 @@ export class DashboardState {
             throw new Error('clipboard is not available in this context');
           }
           await this.deps.copyText(action.text);
-          // The invoking button shows its own "Copied!" flip; a toast would
-          // be noise. Errors still surface via the catch below.
-          return;
+          detail = 'Copied!';
+          break;
         }
       }
       this.snapshot = { ...this.snapshot, error: undefined };

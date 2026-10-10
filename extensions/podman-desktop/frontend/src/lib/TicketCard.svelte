@@ -6,7 +6,6 @@
   let { ticket }: { ticket: string } = $props();
 
   let qrSvg = $state('');
-  let copied = $state(false);
 
   $effect(() => {
     if (!ticket) {
@@ -22,8 +21,6 @@
     // navigator.clipboard is unavailable in PD webviews; the backend
     // performs the copy through the extension API.
     sendAction({ kind: 'copy', text: ticket });
-    copied = true;
-    setTimeout(() => (copied = false), 1500);
   }
 </script>
 
@@ -35,9 +32,7 @@
       LAN machine), then follow your publisher to replicate your images.
     </p>
     <textarea class="mono" readonly rows="3" value={ticket}></textarea>
-    <Button onclick={copy}>
-      {copied ? 'Copied!' : 'Copy ticket'}
-    </Button>
+    <Button onclick={copy}>Copy ticket</Button>
   </div>
   <div class="qr">
     {#if qrSvg}
