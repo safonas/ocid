@@ -596,7 +596,7 @@ requires-dist = [
     { name = "mkdocs-material", specifier = ">=9.5.0" },
     { name = "mkdocs-mermaid-plugin" },
     { name = "mkdocs-minify-plugin" },
-    { name = "pymdown-extensions", specifier = ">=10.8.0" },
+    { name = "pymdown-extensions", specifier = ">=11.0.1" },
 ]
 
 [[package]]

@@ -12,7 +12,7 @@ dependencies = [
     "mkdocs-git-authors-plugin",
     "mkdocs-git-revision-date-localized-plugin",
     "mkdocs-minify-plugin",
-    "pymdown-extensions>=10.8.0",
+    "pymdown-extensions>=11.0.1",
 ]
 
 [build-system]
