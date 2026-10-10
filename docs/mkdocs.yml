@@ -6,6 +6,22 @@ site_description: Local-first, peer-to-peer OCI image distribution
 site_author: ocid contributors
 site_url: https://ocid.dev
 
+# Docs live next to this config (docs/), not in a docs/ subdir: mkdocs is
+# invoked from inside docs/ (see deploy-docs.yml). The built site goes to
+# ../site (repo-root site/) — mkdocs forbids a site_dir within docs_dir;
+# exclude_docs keeps the uv project and its virtualenv out of the copied
+# static tree (CNAME stays — Pages needs it).
+docs_dir: .
+site_dir: ../site
+exclude_docs: |
+  .venv/**
+  __pycache__/**
+  mkdocs.yml
+  main.py
+  pyproject.toml
+  uv.lock
+  overrides/**
+
 # Repository
 repo_name: safonas/ocid
 repo_url: https://github.com/safonas/ocid
@@ -72,22 +88,12 @@ plugins:
   - search:
       lang: en
       separator: '[\s\-]+'
-      min_search_length: 3
-      prebuild_index: true
-  - mermaid:
-      enable: true
-      version: 10.9.1
-      arguments:
-        theme: base
-        themeVariables:
-          primaryColor: "#673ab7"
-          primaryTextColor: "#fff"
-          lineColor: "#673ab7"
-          secondaryColor: "#3f51b5"
-          tertiaryColor: "#2196f3"
+  # Mermaid diagrams render via the pymdownx.superfences mermaid fence
+  # and Material's client-side mermaid.js — no separate plugin (the old
+  # mkdocs-mermaid-plugin ships no mkdocs entry point and is unmaintained).
+  # Local macros hook: main.py in docs_dir is auto-discovered by the
+  # macros plugin (modules: is for installed pluglets, not file paths).
   - macros:
-      modules:
-        - docs/macros.py
   - git-authors:
       enabled: true
       show_contribution: true
@@ -104,13 +110,13 @@ plugins:
       htmlmin_opts:
         remove_comments: true
 
-# Navigation
+# Navigation — only pages that exist (the revamp drafted sections for
+# guides/, reference/, community/ that were never written; add them back
+# as they land).
 nav:
   - Home: index.md
   - Overview:
-      - What is ocid?: overview/what-is-ocid.md
-      - Use Cases: overview/use-cases.md
-      - Comparison: overview/comparison.md
+      - Pitch: pitch.md
   - Architecture:
       - Design: DESIGN.md
       - Components: architecture/components.md
@@ -118,27 +124,9 @@ nav:
       - Workflows: architecture/workflows.md
       - Trust Model: architecture/trust-model.md
   - Guides:
-      - Getting Started: guides/getting-started.md
-      - Installation: guides/installation.md
-      - Configuration: guides/configuration.md
-      - Publishing Images: guides/publishing.md
-      - Pulling Images: guides/pulling.md
-      - Policy Management: guides/policy.md
       - DNS Publisher Names: dns-publisher-names.md
   - Development:
-      - Building: development/building.md
-      - Testing: development/testing.md
-      - Tracing: TRACING.md
-      - Contributing: CONTRIBUTING.md
-  - Reference:
-      - CLI: reference/ocictl.md
-      - API: reference/api.md
-      - Configuration: reference/configuration.md
-      - Metrics: reference/metrics.md
-  - Community:
-      - Roadmap: community/roadmap.md
-      - Changelog: community/changelog.md
-      - License: LICENSE
+      - Developer Guide: development.md
 
 # Extensions
 markdown_extensions:
@@ -161,8 +149,8 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.details
   - pymdownx.emoji:
-      emoji_index: twemoji
-      emoji_generator: to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -189,12 +177,9 @@ markdown_extensions:
       custom_fences:
         - name: mermaid
           class: mermaid
-          format: pymdownx.superfences.fence_code_format
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
-      slugify: pymdownx.slugs.slugify
-      slugify_kwds:
-        case: lower
   - pymdownx.tasklist:
       custom_checkbox: true
       clickable_checkbox: true

@@ -6,13 +6,15 @@ import os
 
 # Get the current version from Cargo.toml
 def get_version():
-    try:
-        with open("Cargo.toml", "r") as f:
-            for line in f:
-                if line.strip().startswith("version"):
-                    return line.split("=")[1].strip().strip('"').strip("'")
-    except FileNotFoundError:
-        pass
+    # mkdocs runs from docs/, the workspace Cargo.toml sits one level up
+    for candidate in ("Cargo.toml", "../Cargo.toml"):
+        try:
+            with open(candidate, "r") as f:
+                for line in f:
+                    if line.strip().startswith("version"):
+                        return line.split("=")[1].strip().strip('"').strip("'")
+        except FileNotFoundError:
+            continue
     return "unknown"
 
 # Get the latest release from GitHub (fallback to version)

@@ -159,13 +159,13 @@ flowchart TB
 
 | Section | Description |
 |---------|-------------|
-| [Overview](overview/what-is-ocid.md) | What is ocid and how it works |
+| [Pitch](pitch.md) | What ocid is and the topologies it serves |
 | [Architecture](architecture/components.md) | High-level architecture and components |
 | [Data Model](architecture/data-model.md) | Data structures and on-disk layout |
 | [Workflows](architecture/workflows.md) | Publish, replicate, pull, and policy flows |
 | [Trust Model](architecture/trust-model.md) | Security and trust boundaries |
-| [Guides](guides/getting-started.md) | Step-by-step guides for common tasks |
-| [Reference](reference/ocictl.md) | CLI, API, and configuration reference |
+| [DNS Publisher Names](dns-publisher-names.md) | Human-readable names for publishers |
+| [Development](development.md) | Building, testing, and security scanning |
 
 ---
 
@@ -180,7 +180,7 @@ flowchart TB
 
 ## 📜 License
 
-ocid is licensed under the **GPL-3.0-or-later** license. See [LICENSE](LICENSE) for details.
+ocid is licensed under the **GPL-3.0-or-later** license. See [LICENSE](https://github.com/safonas/ocid/blob/main/LICENSE) for details.
 
 ---
 
@@ -195,4 +195,4 @@ ocid stands on the shoulders of giants:
 
 ---
 
-!!! tip "New to ocid? Start with the [Getting Started](guides/getting-started.md) guide!"
+!!! tip "New to ocid? Start with the [README](https://github.com/safonas/ocid#readme) — the five-minute two-node demo!"
