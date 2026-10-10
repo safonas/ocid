@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { faCopy, faTerminal } from '@fortawesome/free-solid-svg-icons';
-  import { Button, DropdownMenu, Input } from '@podman-desktop/ui-svelte';
+  import { Button, Input } from '@podman-desktop/ui-svelte';
   import { sendAction } from '../api';
   import { fmtBytes, publisherColor, shortId } from './format';
+  import KebabMenu from './KebabMenu.svelte';
   import TimeAgo from './TimeAgo.svelte';
   import type { ReleaseInfo, Status } from '../../../src/types';
   import { normalizePullRef } from '../../../src/pullref';
@@ -151,18 +151,18 @@
                 {follows(r.publisher) ? 'Unfollow' : 'Follow'}
               </Button>
             {/if}
-            <DropdownMenu title="More actions">
-              <DropdownMenu.Item
-                title="Copy pull command"
-                icon={faCopy}
-                onClick={() => sendAction({ kind: 'copy', text: `podman pull ${regRef(r)}` })}
-              />
-              <DropdownMenu.Item
-                title="Copy run command"
-                icon={faTerminal}
-                onClick={() => sendAction({ kind: 'copy', text: `podman run ${regRef(r)}` })}
-              />
-            </DropdownMenu>
+            <KebabMenu
+              items={[
+                {
+                  label: 'Copy pull command',
+                  onclick: () => sendAction({ kind: 'copy', text: `podman pull ${regRef(r)}` }),
+                },
+                {
+                  label: 'Copy run command',
+                  onclick: () => sendAction({ kind: 'copy', text: `podman run ${regRef(r)}` }),
+                },
+              ]}
+            />
             <Button type="danger" padding="px-2 py-0.5" onclick={() => sendAction({ kind: 'rm', reference: ref(r), allTags: false })}>
               Remove
             </Button>

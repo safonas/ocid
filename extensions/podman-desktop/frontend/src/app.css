@@ -327,6 +327,40 @@ td.actions :global(button) {
   margin: 1px 0 1px 4px;
 }
 
+/* Row kebab menu (fixed position: the table's overflow wrapper would clip
+ * an absolutely positioned popup). */
+.kebab {
+  display: inline-block;
+}
+
+.kebab .menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 160px;
+  background: var(--ocid-card);
+  border: 1px solid var(--ocid-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 35%);
+  padding: 4px;
+}
+
+.kebab .menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--ocid-fg);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.kebab .menu button:hover {
+  background: var(--ocid-card-hover);
+}
+
 .log {
   font-family: var(--ocid-mono);
   font-size: 12px;
