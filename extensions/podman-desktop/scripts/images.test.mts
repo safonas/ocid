@@ -68,6 +68,48 @@ test('ocidTarget keeps the real tag of name:tag@digest references', () => {
   assert.equal(ocidTarget('quay.io/org/app:1.0@sha256:abcd'), 'org/app:1.0');
 });
 
+test('ocidTarget re-pushes ocid-sourced images into our own namespace', () => {
+  const host = '127.0.0.1:5050';
+  // Pulled by a peer's hex publisher id (e.g. via the releases table).
+  const hex = '754a4796082db9d47c5d1123cc32e70fb8208f9c383baa63004f3c383ebfb2fd';
+  assert.equal(
+    ocidTarget(`${host}/${hex}/zirconium-hawaii:1.0`, host),
+    'zirconium-hawaii:1.0',
+  );
+  // Pulled via a DNS publisher name — same strip.
+  assert.equal(
+    ocidTarget(`${host}/ocid.dev/zirconium-hawaii:1.0`, host),
+    'zirconium-hawaii:1.0',
+  );
+  // Digest-pinned ocid source: publisher stripped, digest tag derived.
+  assert.equal(
+    ocidTarget(`${host}/${hex}/zirconium-hawaii@sha256:0123abcd`, host),
+    'zirconium-hawaii:sha256-0123abcd',
+  );
+  // Own-namespace pulls keep their name (single segment, nothing to strip).
+  assert.equal(ocidTarget(`${host}/zirconium-hawaii:1.0`, host), 'zirconium-hawaii:1.0');
+  // Multi-component own names are not publisher namespaces.
+  assert.equal(ocidTarget(`${host}/team/app:1.0`, host), 'team/app:1.0');
+});
+
+test('ocidTarget leaves foreign registries and non-matching hosts alone', () => {
+  const host = '127.0.0.1:5050';
+  // A dotted org on a foreign registry is a name path, not a publisher name.
+  assert.equal(
+    ocidTarget('registry.example.com/my.org/app:1.0', host),
+    'my.org/app:1.0',
+  );
+  // Pulled from a different host spelling: falls back to the location
+  // strip (the daemon may still reject it; better a clear error than a
+  // silent rename).
+  assert.equal(
+    ocidTarget('localhost:5050/ocid.dev/app:1.0', host),
+    'ocid.dev/app:1.0',
+  );
+  // No host given: unchanged legacy behavior.
+  assert.equal(ocidTarget('docker.io/library/alpine:latest'), 'alpine:latest');
+});
+
 test('menuImageSource passes digest-pinned RepoTags through as the source', () => {
   assert.equal(
     menuImageSource({ RepoTags: ['cgr.dev/chainguard/node@sha256:2a2df3a1f79cfe63317e3e6e2b7394cac434648fdfc82e4f702d0e6dc4d9a852'] }),
