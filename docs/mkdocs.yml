@@ -14,7 +14,7 @@ edit_uri: edit/main/docs/
 # Theme
 theme:
   name: material
-  custom_dir: docs/overrides
+  custom_dir: overrides
   language: en
   palette:
     # Light mode
@@ -202,10 +202,10 @@ markdown_extensions:
 
 # Extra CSS/JS
 extra_css:
-  - css/extra.css
+  - overrides/extra.css
 
 extra_javascript:
-  - js/extra.js
+  - overrides/extra.js
 
 # Social
 extra:

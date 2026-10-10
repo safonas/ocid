@@ -1,4 +1,2 @@
 # Ignore documentation and Python dependencies (not part of runtime)
 docs/
-requirements.txt
-mkdocs.yml
