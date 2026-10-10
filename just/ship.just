@@ -3,6 +3,7 @@
 #   just ship cut-release VER      validate CI, bump, push branch, open PR, STOP
 #   just ship publish-release VER  tag the merge, tap update, draft release + CI publish
 #   just ship republish VER        re-dispatch the release build for an existing draft
+#   just ship republish-image VER  re-dispatch the extension OCI image build for a tag
 #   just ship publish VER           alias for publish-release
 #
 # Invoke from the repo root; `[no-cd]` keeps each recipe running there too
@@ -223,6 +224,40 @@ republish VERSION: github-remote
         exit 1
     fi
     echo "Published: https://github.com/safonas/ocid/releases/tag/$tag"
+
+# Retry publishing the extension OCI image for an existing release: re-dispatches
+# extension.yml against the tag (the image lands on ghcr.io under the version tag
+# and :testing). Unlike release assets, the image is mutable, so this works for
+# published releases too — use it whenever the image build failed or must be
+# rebuilt (e.g. a broken digest pin). Builds run from the tag; the workflow file
+# itself comes from main.
+[confirm("Re-dispatch the extension image build?")]
+[no-cd]
+republish-image VERSION: github-remote
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ver="{{ VERSION }}"
+    ver="${ver#v}"
+    [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "error: invalid semantic version '{{ VERSION }}'" >&2; exit 1; }
+    tag="v$ver"
+    git ls-remote --tags github "refs/tags/$tag" | grep -q "$tag" || { echo "error: tag '$tag' does not exist on github" >&2; exit 1; }
+    gh release view "$tag" >/dev/null 2>&1 || { echo "error: no GitHub release for '$tag'" >&2; exit 1; }
+    since=$(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M:%SZ)
+    gh workflow run extension.yml --ref main -f tag="$tag"
+    echo "Re-dispatched the extension image build for $tag; watching it..."
+    run_id=""
+    for _ in $(seq 1 30); do
+        run_id=$(gh run list --workflow extension.yml --limit 5 --json databaseId,createdAt \
+            --jq "[.[] | select(.createdAt >= \"$since\")][0].databaseId // \"\"")
+        [ -n "$run_id" ] && break
+        sleep 2
+    done
+    [ -n "$run_id" ] || { echo "error: dispatched extension.yml run not found; check the Actions page" >&2; exit 1; }
+    if ! gh run watch "$run_id" --exit-status --interval 30; then
+        echo "error: the extension image build failed again" >&2
+        exit 1
+    fi
+    echo "Image published: ghcr.io/safonas/ocid-extension:$tag (and :testing)"
 
 # Alias for publish-release (confirmation happens there).
 [no-cd]
