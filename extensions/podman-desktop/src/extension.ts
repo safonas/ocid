@@ -73,6 +73,16 @@ function runErrMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** Signal-0 probe: does a pid still refer to a live process? */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // --- setup integrations (host side) ------------------------------------------
 
 /** Where GUI-launched Podman Desktops often miss brew/cargo installs. */
@@ -146,6 +156,20 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
   /** Setup state for the dashboard card; also re-reads the daemon's CA —
    *  which does not exist until the daemon first generates it. */
   const extensionRoot = extensionContext.extensionUri.fsPath;
+  /** Pid of the PATH daemon this session spawned; PATH daemons otherwise
+   *  outlive the extension by design, so only the Stop button uses this. */
+  let spawnedPid: number | undefined;
+  /** Whether the running daemon is one this extension can stop — refreshed
+   *  once per daemon-up episode, not on every 2s poll (podman inspect). */
+  let stoppable = false;
+  const refreshStoppable = (): void => {
+    void daemon
+      .isDaemonPodOurs()
+      .catch(() => false)
+      .then(ours => {
+        stoppable = ours || (spawnedPid !== undefined && pidAlive(spawnedPid));
+      });
+  };
   const setup = async (): Promise<SetupState> => {
     const linux = process.platform === 'linux';
     registeredNow = linux && (await isRegistered(host).catch(() => false));
@@ -165,6 +189,7 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
       ocidPath: await ocidLookup(),
       bundled: await daemon.hasBundledDaemon(extensionRoot),
       keepDaemonAlive: keepDaemonAlive(),
+      stoppable,
       autoPull: api.configuration.getConfiguration('ocid').get<boolean>('autoPull') === true,
       tls,
     };
@@ -197,9 +222,26 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     try {
       const child = spawn(bin, ['--tls'], { detached: true, stdio: ['ignore', out.fd, out.fd] });
       child.unref();
+      spawnedPid = child.pid;
     } finally {
       await out.close();
     }
+  };
+
+  /** Stop the daemon: the bundled pod we started, or the PATH binary this
+   *  session spawned (SIGTERM — the daemon flushes and exits gracefully).
+   *  Daemons the extension did not start are not ours to stop. */
+  const stopDaemon = async (): Promise<void> => {
+    if (await daemon.isDaemonPodOurs()) {
+      await daemon.stopDaemonPod();
+      return;
+    }
+    if (spawnedPid !== undefined && pidAlive(spawnedPid)) {
+      process.kill(spawnedPid, 'SIGTERM');
+      spawnedPid = undefined;
+      return;
+    }
+    throw new Error('this daemon was not started by the extension — stop it where it was started');
   };
 
   state = new DashboardState({
@@ -215,6 +257,11 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
     setup,
     registerRegistry,
     startDaemon,
+    stopDaemon,
+    setKeepAlive: async (value: boolean) => {
+      await api.configuration.getConfiguration('ocid').update('keepDaemonAlive', value);
+    },
+    onDaemonUp: refreshStoppable,
     autoPull: () => api.configuration.getConfiguration('ocid').get<boolean>('autoPull') === true,
     setAutoPull: async (value: boolean) => {
       await api.configuration.getConfiguration('ocid').update('autoPull', value);

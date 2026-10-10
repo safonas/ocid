@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Button, Input } from '@podman-desktop/ui-svelte';
+  import { faCopy, faTerminal } from '@fortawesome/free-solid-svg-icons';
+  import { Button, DropdownMenu, Input } from '@podman-desktop/ui-svelte';
   import { sendAction } from '../api';
   import { fmtBytes, publisherColor, shortId } from './format';
   import TimeAgo from './TimeAgo.svelte';
@@ -9,7 +10,6 @@
   let { releases, status }: { releases: ReleaseInfo[]; status?: Status } = $props();
 
   let pullRef = $state('');
-  let copiedKey = $state('');
 
   // Coarse display-only classification from the Status rule strings (the
   // daemon stays the single policy enforcer; this never decides retention).
@@ -35,6 +35,14 @@
     return kept === 'seed' || kept === 'pin' || kept === 'follow';
   }
 
+  function isPinned(r: ReleaseInfo): boolean {
+    return status?.pins.includes(`${r.publisher}/${r.name}:${r.tag}`) ?? false;
+  }
+
+  function follows(publisher: string): boolean {
+    return status?.follows.some(f => f.split(' ')[0] === publisher) ?? false;
+  }
+
   function ref(r: ReleaseInfo, tagged = true): string {
     return tagged ? `${r.publisher}/${r.name}:${r.tag}` : `${r.publisher}/${r.name}`;
   }
@@ -46,14 +54,6 @@
   function regRef(r: ReleaseInfo): string {
     const reg = (status?.registry ?? '127.0.0.1:5050').replace(/^\w+:\/\//, '');
     return `${reg}/${r.publisher}/${r.name}:${r.tag}`;
-  }
-
-  function copyCmd(cmd: string, key: string): void {
-    // navigator.clipboard is unavailable in PD webviews (not a secure
-    // context) — the backend performs the copy via the extension API.
-    sendAction({ kind: 'copy', text: cmd });
-    copiedKey = key;
-    setTimeout(() => (copiedKey = ''), 1500);
   }
 
   function pull(): void {
@@ -118,38 +118,51 @@
             <span class="badge" class:ok={keptBy(r) !== 'cache'}>{keptBy(r)}</span>
           </td>
           <td class="actions">
-            <Button
-              type="secondary"
-              padding="px-2 py-0.5"
-              title="Copy a ready-to-paste podman pull command"
-              onclick={() => copyCmd(`podman pull ${regRef(r)}`, `pull:${ref(r)}`)}
-            >
-              {copiedKey === `pull:${ref(r)}` ? 'Copied!' : 'Pull cmd'}
-            </Button>
-            <Button
-              type="secondary"
-              padding="px-2 py-0.5"
-              title="Copy a ready-to-paste podman run command"
-              onclick={() => copyCmd(`podman run ${regRef(r)}`, `run:${ref(r)}`)}
-            >
-              {copiedKey === `run:${ref(r)}` ? 'Copied!' : 'Run cmd'}
-            </Button>
             {#if !r.mine}
-              {#if isSeeded(r)}
-                <Button type="secondary" padding="px-2 py-0.5" onclick={() => sendAction({ kind: 'unseed', reference: ref(r, false) })}>
-                  Unseed
-                </Button>
-              {:else}
-                <Button type="secondary" padding="px-2 py-0.5" onclick={() => sendAction({ kind: 'seed', reference: ref(r, false), mode: 'latest' })}>
-                  Seed
-                </Button>
-              {/if}
-              <Button type="secondary" padding="px-2 py-0.5" onclick={() => sendAction({ kind: 'pin', reference: ref(r) })}>Pin</Button>
-              <Button type="secondary" padding="px-2 py-0.5" onclick={() => sendAction({ kind: 'unpin', reference: ref(r) })}>Unpin</Button>
-              <Button type="secondary" padding="px-2 py-0.5" onclick={() => sendAction({ kind: 'follow', publisher: r.publisher, mode: 'latest' })}>
-                Follow
+              <Button
+                type="secondary"
+                padding="px-2 py-0.5"
+                onclick={() =>
+                  sendAction(
+                    isSeeded(r)
+                      ? { kind: 'unseed', reference: ref(r, false) }
+                      : { kind: 'seed', reference: ref(r, false), mode: 'latest' },
+                  )}>
+                {isSeeded(r) ? 'Unseed' : 'Seed'}
+              </Button>
+              <Button
+                type="secondary"
+                padding="px-2 py-0.5"
+                onclick={() =>
+                  sendAction(
+                    isPinned(r) ? { kind: 'unpin', reference: ref(r) } : { kind: 'pin', reference: ref(r) },
+                  )}>
+                {isPinned(r) ? 'Unpin' : 'Pin'}
+              </Button>
+              <Button
+                type="secondary"
+                padding="px-2 py-0.5"
+                onclick={() =>
+                  sendAction(
+                    follows(r.publisher)
+                      ? { kind: 'unfollow', publisher: r.publisher }
+                      : { kind: 'follow', publisher: r.publisher, mode: 'latest' },
+                  )}>
+                {follows(r.publisher) ? 'Unfollow' : 'Follow'}
               </Button>
             {/if}
+            <DropdownMenu title="More actions">
+              <DropdownMenu.Item
+                title="Copy pull command"
+                icon={faCopy}
+                onClick={() => sendAction({ kind: 'copy', text: `podman pull ${regRef(r)}` })}
+              />
+              <DropdownMenu.Item
+                title="Copy run command"
+                icon={faTerminal}
+                onClick={() => sendAction({ kind: 'copy', text: `podman run ${regRef(r)}` })}
+              />
+            </DropdownMenu>
             <Button type="danger" padding="px-2 py-0.5" onclick={() => sendAction({ kind: 'rm', reference: ref(r), allTags: false })}>
               Remove
             </Button>
