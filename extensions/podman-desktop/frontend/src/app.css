@@ -287,6 +287,11 @@ tr:hover td {
   background: var(--ocid-card-hover);
 }
 
+/* Peers not heard from in over a week recede visually. */
+tr.stale {
+  opacity: 0.45;
+}
+
 .badge {
   display: inline-block;
   padding: 1px 7px;
