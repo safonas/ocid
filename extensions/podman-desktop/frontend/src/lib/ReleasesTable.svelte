@@ -4,6 +4,7 @@
   import { fmtBytes, publisherColor, shortId } from './format';
   import TimeAgo from './TimeAgo.svelte';
   import type { ReleaseInfo, Status } from '../../../src/types';
+  import { normalizePullRef } from '../../../src/pullref';
 
   let { releases, status }: { releases: ReleaseInfo[]; status?: Status } = $props();
 
@@ -56,7 +57,7 @@
   }
 
   function pull(): void {
-    const reference = pullRef.trim();
+    const reference = normalizePullRef(pullRef);
     if (reference) sendAction({ kind: 'pull', reference });
     pullRef = '';
   }
@@ -66,7 +67,7 @@
   <div class="grow">
     <Input
       class="mono"
-      placeholder="pull <publisher>/<name>[:<tag>]"
+      placeholder="pull <publisher|domain>/<name>[:<tag>]"
       aria-label="Reference to pull"
       bind:value={pullRef}
       onkeypress={e => e.key === 'Enter' && pull()}

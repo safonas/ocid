@@ -580,6 +580,41 @@ impl Node {
         Err(anyhow!("not a publisher id, alias, or domain: {arg:?}"))
     }
 
+    /// Rewrite a leading DNS publisher name to its hex key: `<zone>/<rest>`
+    /// becomes `<hex>/<rest>` when the zone has a verified `_ocid` record.
+    /// A zone without a record (or with DNS disabled) falls through
+    /// unchanged; a record that fails verification is an error — a spoofed
+    /// or hijacked name must not silently resolve to someone else's
+    /// namespace.
+    pub async fn rewrite_dns_publisher(&self, reference: &str) -> Result<String> {
+        if let Some((first, rest)) = reference.split_once('/') {
+            if !rest.is_empty() && ocid_core::dns::is_domain_name(first) {
+                match self.dns.resolve_zone(first).await {
+                    Ok(crate::dns_resolver::ZoneOutcome::Resolved { publisher, .. }) => {
+                        return Ok(format!("{publisher}/{rest}"));
+                    }
+                    Ok(
+                        crate::dns_resolver::ZoneOutcome::NoRecord
+                        | crate::dns_resolver::ZoneOutcome::Disabled,
+                    ) => {}
+                    Err(e) => bail!("DNS publisher name {first:?}: {e:#}"),
+                }
+            }
+        }
+        Ok(reference.to_string())
+    }
+
+    /// Resolve a user-supplied reference (control API, CLI) the same way
+    /// the registry routes do: strip a pasted registry location, resolve a
+    /// DNS publisher name live, then apply the hybrid rules.
+    pub async fn resolve_image_ref(&self, reference: &str) -> Result<ImageRef> {
+        let stripped = ocid_core::oci::strip_registry_location(reference);
+        let rewritten = self.rewrite_dns_publisher(stripped).await?;
+        let policy = self.policy().await;
+        ImageRef::parse(&rewritten, &policy, &self.id())
+            .with_context(|| format!("invalid reference {reference:?}"))
+    }
+
     /// Resolve a zone to its publisher via DNS; pins on first verified
     /// sight (TOFU) and refuses hijacks/stale records loudly.
     async fn resolve_zone_publisher(self: &Arc<Self>, zone: &str) -> Result<PublisherId> {
