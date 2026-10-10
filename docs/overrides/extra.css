@@ -1,0 +1,170 @@
+/* Custom CSS for ocid MkDocs */
+
+/* Mermaid diagrams */
+.mermaid {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Code blocks */
+pre {
+    background: #2d3748;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 0.9em;
+}
+
+/* Inline code */
+code {
+    background: #f3f4f6;
+    color: #4a5568;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+/* Admonitions */
+.admonition {
+    border-left: 4px solid;
+    padding-left: 16px;
+    margin: 16px 0;
+}
+
+.admonition.note {
+    border-color: #3182ce;
+    background: rgba(49, 130, 206, 0.05);
+}
+
+.admonition.tip {
+    border-color: #38b2ac;
+    background: rgba(56, 178, 172, 0.05);
+}
+
+.admonition.warning {
+    border-color: #dd6b20;
+    background: rgba(221, 107, 32, 0.05);
+}
+
+.admonition.danger {
+    border-color: #e53e3e;
+    background: rgba(229, 62, 62, 0.05);
+}
+
+/* Tables */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+}
+
+table th,
+table td {
+    border: 1px solid #e2e8f0;
+    padding: 8px 12px;
+    text-align: left;
+}
+
+table th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+
+table tr:nth-child(even) {
+    background: #f8f9fa;
+}
+
+/* Links */
+a {
+    color: #3182ce;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+    color: #2d3748;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+}
+
+/* Blockquotes */
+blockquote {
+    border-left: 4px solid #3182ce;
+    padding-left: 16px;
+    margin-left: 0;
+    color: #4a5568;
+    font-style: italic;
+}
+
+/* Images */
+img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+}
+
+/* Buttons */
+.md-button {
+    display: inline-block;
+    background: #3182ce;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.md-button:hover {
+    background: #2c5282;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    pre {
+        font-size: 0.8em;
+    }
+
+    table {
+        font-size: 0.9em;
+    }
+}
+
+/* Syntax highlighting */
+.hll {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Line numbers */
+.linenodiv {
+    background: #2d3748;
+    color: #718096;
+    padding: 0 8px;
+    text-align: right;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #2d3748;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #4a5568;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
