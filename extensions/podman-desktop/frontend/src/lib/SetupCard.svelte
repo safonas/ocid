@@ -21,11 +21,19 @@
           Start ocid daemon
         </Button>
         <span class="dim">
-          {#if setup.bundled}bundled image, runs as a pod —
-            {#if setup.keepDaemonAlive}stays running (ocid.keepDaemonAlive){:else}stops with the extension{/if}
+          {#if setup.bundled}bundled image, runs as a pod
           {:else}from <code class="mono">{setup.ocidPath}</code>{/if}
         </span>
       </div>
+      {#if setup.bundled}
+        <div class="row">
+          <Checkbox
+            checked={setup.keepDaemonAlive}
+            onclick={(value) => sendAction({ kind: 'set-keep-alive', value })}>
+            Keep the daemon running when the extension stops
+          </Checkbox>
+        </div>
+      {/if}
       <div class="row">
         <Checkbox
           checked={setup.autoPull}
