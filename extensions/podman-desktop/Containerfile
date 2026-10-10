@@ -4,10 +4,10 @@
 # Build with `just ext image`; push to a registry and register it in the
 # podman-desktop-catalog to distribute.
 #
-# syntax=docker/dockerfile:1.27@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
+# syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
 
 # Wolfi-based node builder, pinned by digest (override via --build-arg).
-ARG NODE_IMAGE=cgr.dev/chainguard/node@sha256:1ae8ed719c65888716078a52ce2166767e091f0b1072a79f6b42becba6e1ad44
+ARG NODE_IMAGE=cgr.dev/chainguard/node@sha256:4e771308d07813bf9a1aa25299a45e5664533c47fe4c541c14498752f2dbc2dd
 
 FROM ${NODE_IMAGE} AS builder
 

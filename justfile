@@ -50,10 +50,10 @@ podman_bin := require(env("PODMAN", "podman"))
 podman := podman_bin
 # Builder images pinned by digest for reproducible builds (override via
 # RUST_IMAGE / NODE_IMAGE env). Wolfi-based (Chainguard); the rust image
-# ships the same rustc 1.98.1 as the previous Debian pin. NOTE: switching
+# ships rustc 1.99.0, matching rust-toolchain.toml. NOTE: switching
 # the rust image invalidates the target cache (std metadata differs per
 # vendor build) — remove the ocid-target volume after a toolchain change.
-rust_image := env("RUST_IMAGE", "cgr.dev/chainguard/rust@sha256:635c2f1ae6306ebcbeda3857013f065be7e1ed5dff0f8aff7a6a7a1bce459cac")
+rust_image := env("RUST_IMAGE", "cgr.dev/chainguard/rust@sha256:582a81742d5038a25c0b07359762953d94dbbe17533ab6db5164882b82a2e15b")
 image := env("IMAGE", "localhost/ocid:dev")
 project := "ocid"
 vol_registry := project + "-cargo-registry"

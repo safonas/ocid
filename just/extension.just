@@ -23,7 +23,7 @@ set lazy
 
 podman := require(env("PODMAN", "podman"))
 # Wolfi-based node builder, pinned by digest (override via NODE_IMAGE env).
-node_image := env("NODE_IMAGE", "cgr.dev/chainguard/node@sha256:2a2df3a1f79cfe63317e3e6e2b7394cac434648fdfc82e4f702d0e6dc4d9a852")
+node_image := env("NODE_IMAGE", "cgr.dev/chainguard/node@sha256:4e771308d07813bf9a1aa25299a45e5664533c47fe4c541c14498752f2dbc2dd")
 ext_image := env("EXT_IMAGE", "localhost/ocid-extension:dev")
 ext_dir := "extensions/podman-desktop"
 # Chainguard images run as a non-root uid by default; map the invoking user

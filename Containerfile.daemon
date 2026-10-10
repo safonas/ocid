@@ -9,10 +9,10 @@
 # — the artifact stays lean, and host-side ocictl manages the pod daemon
 # over https.
 
-# syntax=docker/dockerfile:1.27@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
+# syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
 
 # Wolfi rolling base (re-pin regularly for fresh security fixes).
-ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:2ac1d505fb413c69dded7b707be9efc0fa63f6fe6b05f6d88612454f89f15345
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:1c451d46a0d5c4e9f2b38e0e8d3e299564a1aa95c21973efcc1980a9d1d2e73e
 
 FROM ${RUNTIME_IMAGE}
 
