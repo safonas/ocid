@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+# syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
 #
 # Multi-stage build for ocid.
 #
@@ -9,9 +9,9 @@
 # Base images are pinned by digest for reproducible builds; the tag is kept
 # for readability. Override with --build-arg if needed. Both are Wolfi-based
 # (Chainguard).
-ARG BUILDER_IMAGE=cgr.dev/chainguard/rust@sha256:54d844b0dba90a3ea45ad6c524c82186a8985c8c25a55209c706c3d81576d546
+ARG BUILDER_IMAGE=cgr.dev/chainguard/rust@sha256:582a81742d5038a25c0b07359762953d94dbbe17533ab6db5164882b82a2e15b
 # Wolfi rolling base (re-pin regularly for fresh security fixes).
-ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:2ac1d505fb413c69dded7b707be9efc0fa63f6fe6b05f6d88612454f89f15345
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:1c451d46a0d5c4e9f2b38e0e8d3e299564a1aa95c21973efcc1980a9d1d2e73e
 # Reproducible layer timestamps: the release flow passes the tag commit time
 # via --build-arg; this default is the project initial commit epoch.
 ARG SOURCE_DATE_EPOCH=1789090756
