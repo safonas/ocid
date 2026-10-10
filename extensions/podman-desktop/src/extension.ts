@@ -349,8 +349,10 @@ export async function activate(extensionContext: api.ExtensionContext): Promise<
       );
       return;
     }
-    // Digest-pinned sources (no tag) get a deterministic derived tag.
-    const target = `${host}/${ocidTarget(source)}`;
+    // Digest-pinned sources (no tag) get a deterministic derived tag;
+    // ocid-sourced images carry the source publisher's namespace, which
+    // ocidTarget strips so the push lands in our own.
+    const target = `${host}/${ocidTarget(source, host)}`;
     try {
       await podmanRun(['push', source, target], `ocid: pushing ${target.slice(host.length + 1)}`);
       api.window.showInformationMessage(`Pushed ${source} as ${target} — announced to peers.`);
