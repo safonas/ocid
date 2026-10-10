@@ -18,6 +18,12 @@
       "datasourceTemplate": "docker"
     }
   ],
+  "python": {
+    "enabled": true
+  },
+  "uv": {
+    "enabled": true
+  },
   "packageRules": [
     {
       "matchManagers": ["cargo"],
@@ -34,6 +40,11 @@
       "matchPackageNames": ["slsa-framework/slsa-github-generator"],
       "description": "The SLSA generator must be called by tag ref (it resolves its verified builder binary by tag); SHA pinning breaks it. See upstream RENOVATE.md.",
       "pinDigests": false
+    },
+    {
+      "matchManagers": ["uv"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "python minor and patch"
     }
   ]
 }

@@ -1,0 +1,231 @@
+# MkDocs configuration for ocid
+# Deployed to GitHub Pages with ocid.dev custom domain
+
+site_name: ocid
+site_description: Local-first, peer-to-peer OCI image distribution
+site_author: ocid contributors
+site_url: https://ocid.dev
+
+# Repository
+repo_name: safonas/ocid
+repo_url: https://github.com/safonas/ocid
+edit_uri: edit/main/docs/
+
+# Theme
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  palette:
+    # Light mode
+    - scheme: default
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - navigation.expand
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.instant.preview
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    - toc.integrate
+  icon:
+    logo: material/docker
+    repo: fontawesome/brands/github
+    admonition:
+      note: fontawesome/solid/note-sticky
+      abstract: fontawesome/solid/book
+      info: fontawesome/solid/circle-info
+      tip: fontawesome/solid/lightbulb
+      success: fontawesome/solid/check-circle
+      question: fontawesome/solid/circle-question
+      warning: fontawesome/solid/triangle-exclamation
+      failure: fontawesome/solid/circle-xmark
+      danger: fontawesome/solid/skull
+      bug: fontawesome/solid/bug
+      example: fontawesome/solid/flask
+      quote: fontawesome/solid/quote-left
+
+# Plugins
+plugins:
+  - search:
+      lang: en
+      separator: '[\s\-]+'
+      min_search_length: 3
+      prebuild_index: true
+  - mermaid:
+      enable: true
+      version: 10.9.1
+      arguments:
+        theme: base
+        themeVariables:
+          primaryColor: "#673ab7"
+          primaryTextColor: "#fff"
+          lineColor: "#673ab7"
+          secondaryColor: "#3f51b5"
+          tertiaryColor: "#2196f3"
+  - macros:
+      modules:
+        - docs/macros.py
+  - git-authors:
+      enabled: true
+      show_contribution: true
+      show_line_count: true
+  - git-revision-date-localized:
+      enabled: true
+      type: date
+      timezone: UTC
+      locale: en
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      htmlmin_opts:
+        remove_comments: true
+
+# Navigation
+nav:
+  - Home: index.md
+  - Overview:
+      - What is ocid?: overview/what-is-ocid.md
+      - Use Cases: overview/use-cases.md
+      - Comparison: overview/comparison.md
+  - Architecture:
+      - Design: DESIGN.md
+      - Components: architecture/components.md
+      - Data Model: architecture/data-model.md
+      - Workflows: architecture/workflows.md
+      - Trust Model: architecture/trust-model.md
+  - Guides:
+      - Getting Started: guides/getting-started.md
+      - Installation: guides/installation.md
+      - Configuration: guides/configuration.md
+      - Publishing Images: guides/publishing.md
+      - Pulling Images: guides/pulling.md
+      - Policy Management: guides/policy.md
+      - DNS Publisher Names: dns-publisher-names.md
+  - Development:
+      - Building: development/building.md
+      - Testing: development/testing.md
+      - Tracing: TRACING.md
+      - Contributing: CONTRIBUTING.md
+  - Reference:
+      - CLI: reference/ocictl.md
+      - API: reference/api.md
+      - Configuration: reference/configuration.md
+      - Metrics: reference/metrics.md
+  - Community:
+      - Roadmap: community/roadmap.md
+      - Changelog: community/changelog.md
+      - License: LICENSE
+
+# Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Anchor link
+      baselevel: 2
+      separator: "-"
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: twemoji
+      emoji_generator: to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+      use_pygments: true
+      noclasses: true
+      linenums: true
+      linenums_class: linenums
+      linenums_style: pymdownx-inline
+      guess_lang: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: safonas
+      repo: ocid
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      base_path: docs
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: pymdownx.slugs.slugify
+      slugify_kwds:
+        case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+      clickable_checkbox: true
+  - pymdownx.tilde
+
+# Extra CSS/JS
+extra_css:
+  - overrides/extra.css
+
+extra_javascript:
+  - overrides/extra.js
+
+# Social
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/safonas/ocid
+      name: GitHub
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/safonas/ocid
+      name: Docker Hub
+    - icon: fontawesome/solid/book
+      link: https://ocid.dev
+      name: Documentation
+
+# Copyright
+copyright: |
+  &copy; 2024 <a href="https://github.com/safonas/ocid">ocid contributors</a>
+  | Powered by <a href="https://www.rust-lang.org">Rust</a> & <a href="https://iroh.computer">iroh</a>
+
+# Google Analytics (optional)
+# google_analytics:
+#   - UA-XXXXXXXX-X
+#   - auto
