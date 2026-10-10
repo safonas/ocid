@@ -258,6 +258,34 @@ pub fn validate_tag(tag: &str) -> Result<()> {
     Ok(())
 }
 
+/// Strip a pasted registry location off the front of a reference: an
+/// optional scheme and a leading `host[:port]/` segment, e.g.
+/// `https://127.0.0.1:5050/app:1.0` -> `app:1.0`. A first segment counts
+/// as a location when it carries a port, is an IP literal, or is
+/// `localhost` — none of those can be a publisher (hex, domain, alias),
+/// so this only turns invalid references into valid ones.
+pub fn strip_registry_location(s: &str) -> &str {
+    let s = s.trim();
+    let s = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .unwrap_or(s);
+    let Some((first, rest)) = s.split_once('/') else {
+        return s;
+    };
+    if rest.is_empty() {
+        return s;
+    }
+    let is_location = first.contains(':')
+        || first == "localhost"
+        || (first.bytes().all(|b| b.is_ascii_digit() || b == b'.') && first.contains('.'));
+    if is_location {
+        rest
+    } else {
+        s
+    }
+}
+
 /// A fully resolved image reference: `<publisher>/<name>[:<tag>]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImageRef {
@@ -283,13 +311,15 @@ impl ImageRef {
         })
     }
 
-    /// Hybrid parse: explicit publisher, alias, or implicit self.
+    /// Hybrid parse: explicit publisher, alias, or implicit self. A pasted
+    /// registry location (`127.0.0.1:5050/…`) is stripped first.
     pub fn parse(s: &str, policy: &Policy, self_id: &PublisherId) -> Result<Self> {
         let s = s.trim();
         // did:key form contains ':' so must be handled before tag splitting.
         if s.starts_with("did:key:") {
             return Self::parse_explicit(s);
         }
+        let s = strip_registry_location(s);
         let (repo, tag) = split_tag(s)?;
         let (publisher, name) = resolve_repo(&repo, policy, self_id)?;
         Ok(Self {
@@ -433,6 +463,55 @@ mod tests {
             (r.publisher, r.name.as_str(), r.tag.as_deref()),
             (alice.id(), "x", Some("z"))
         );
+    }
+
+    #[test]
+    fn registry_locations_are_stripped() {
+        let me = Identity::generate();
+        let policy = Policy::default();
+        for input in [
+            "web:1.0",
+            " 127.0.0.1:5050/web:1.0",
+            "localhost:5050/web:1.0",
+            "http://127.0.0.1:5050/web:1.0",
+            "https://localhost/web:1.0",
+            "[::1]:5050/web:1.0",
+            "127.0.0.1/web:1.0",
+        ] {
+            let r = ImageRef::parse(input, &policy, &me.id()).unwrap();
+            assert_eq!(
+                (r.publisher, r.name.as_str(), r.tag.as_deref()),
+                (me.id(), "web", Some("1.0")),
+                "input {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn registry_location_before_publisher_segment() {
+        let me = Identity::generate();
+        let alice = Identity::generate();
+        let policy = Policy::default();
+        let input = format!("https://127.0.0.1:5050/{}/web:1.0", alice.id());
+        let r = ImageRef::parse(&input, &policy, &me.id()).unwrap();
+        assert_eq!(
+            (r.publisher, r.name.as_str(), r.tag.as_deref()),
+            (alice.id(), "web", Some("1.0"))
+        );
+    }
+
+    #[test]
+    fn non_location_first_segments_are_untouched() {
+        let me = Identity::generate();
+        let policy = Policy::default();
+        // Domain-shaped and dotted segments are publishers or names, not
+        // locations; a bare host with nothing after it is left alone too
+        // (it parses as a self-name and stays the caller's problem).
+        for input in ["ocid.dev/app:1.0", "my.app:2.0", "127.0.0.1:5050"] {
+            let r = ImageRef::parse(input, &policy, &me.id())
+                .unwrap_or_else(|e| panic!("input {input:?}: {e}"));
+            assert_eq!(r.publisher, me.id(), "input {input:?}");
+        }
     }
 
     #[test]

@@ -313,6 +313,14 @@ if command -v dnsmasq >/dev/null; then
     podman pull -q --tls-verify=false "$REG_A/$ZONE/app:dns" >/dev/null \
         && ok "podman pull via DNS publisher name" || fail "pull via DNS name"
 
+    # The control API resolves the same names as the registry: ocictl pull
+    # takes a bare domain reference and a full registry reference pasted
+    # wholesale (host prefix stripped daemon-side).
+    ctl_a pull "$ZONE/app:dns" >/dev/null \
+        && ok "ocictl pull via DNS publisher name" || fail "ocictl pull via DNS name"
+    ctl_a pull "$REG_A/$ZONE/app:dns" >/dev/null \
+        && ok "ocictl pull with pasted registry location" || fail "ocictl pull with host prefix"
+
     out=$(curl -s "http://$REG_A/_ocid/dns/resolve?zone=$ZONE")
     assert_eq "resolve endpoint: the zone maps to B" "$B" "$(echo "$out" | jq -r .publisher)"
     assert_eq "resolve endpoint: state pinned" "pinned" "$(echo "$out" | jq -r .state)"

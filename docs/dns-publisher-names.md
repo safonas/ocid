@@ -2,8 +2,8 @@
 
 Human-readable domain names instead of 64-character hex publisher ids.
 A domain like `images.example.com` can stand in for your publisher key
-everywhere a `<publisher>` appears: registry paths, `ocictl follow`,
-`ocictl seed`, `ocictl pin`, and `policy.toml`.
+everywhere a `<publisher>` appears: registry paths, `ocictl pull`,
+`ocictl follow`, `ocictl seed`, `ocictl pin`, and `policy.toml`.
 
 ```sh
 # instead of:

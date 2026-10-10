@@ -28,9 +28,8 @@ use ocid_core::{
         RefReq, ReleaseInfo, RmReq, RmResp, SeedReq, SyncReq, SyncResp, UnfollowReq, UnpinReq,
         UnseedReq,
     },
-    dns::is_domain_name,
     identity::PublisherId,
-    oci::{self, Digest, ImageRef, Manifest},
+    oci::{self, Digest, Manifest},
     release::{BlobRef, Referrer, Release, ReleasePayload, ReleaseSummary},
 };
 use serde::Serialize;
@@ -355,30 +354,14 @@ async fn resolve(app: &App, name: &str) -> std::result::Result<(PublisherId, Str
 }
 
 /// Rewrite `<domain>/<name>[:<tag>]` to `<hex>/<name>[:<tag>]` when the
-/// domain has a verified `_ocid` record. A domain with no record (or a
-/// dotted self-name like `my.app` with only one path segment) falls
-/// through to the alias/implicit rules unchanged. A record that fails
-/// verification surfaces its error: a spoofed or hijacked name must not
-/// silently resolve to someone else's namespace.
+/// domain has a verified `_ocid` record (see [`Node::rewrite_dns_publisher`]).
+/// A domain with no record falls through to the alias/implicit rules
+/// unchanged; a record that fails verification surfaces its error.
 async fn resolve_dns_name(app: &App, name: &str) -> std::result::Result<String, OciError> {
-    if let Some((first, rest)) = name.split_once('/') {
-        if !rest.is_empty() && is_domain_name(first) {
-            match app.node.dns.resolve_zone(first).await {
-                Ok(ZoneOutcome::Resolved { publisher, .. }) => {
-                    return Ok(format!("{publisher}/{rest}"));
-                }
-                Ok(ZoneOutcome::NoRecord | ZoneOutcome::Disabled) => {}
-                Err(e) => {
-                    return Err(OciError::new(
-                        StatusCode::BAD_REQUEST,
-                        "NAME_INVALID",
-                        format!("DNS publisher name {first:?}: {e}"),
-                    ));
-                }
-            }
-        }
-    }
-    Ok(name.to_string())
+    app.node
+        .rewrite_dns_publisher(name)
+        .await
+        .map_err(|e| OciError::new(StatusCode::BAD_REQUEST, "NAME_INVALID", e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,8 +1011,7 @@ async fn ctl_releases(State(app): State<App>) -> Response {
 }
 
 async fn ctl_pull(State(app): State<App>, Json(req): Json<RefReq>) -> Response {
-    let policy = app.node.policy().await;
-    let r = match ImageRef::parse(&req.reference, &policy, &app.node.id()) {
+    let r = match app.node.resolve_image_ref(&req.reference).await {
         Ok(r) => r,
         Err(e) => return ctl_err(StatusCode::BAD_REQUEST, e),
     };
@@ -1054,8 +1036,7 @@ async fn ctl_announce(State(app): State<App>, Json(req): Json<AnnounceReq>) -> R
                 announced: app.node.announce_all_local().await?,
             }),
             Some(s) => {
-                let policy = app.node.policy().await;
-                let r = ImageRef::parse(&s, &policy, &app.node.id())?;
+                let r = app.node.resolve_image_ref(&s).await?;
                 let rel = app
                     .node
                     .store
@@ -1179,8 +1160,7 @@ async fn ctl_dns_unpin(State(app): State<App>, Json(req): Json<DnsUnpinReq>) -> 
 
 async fn ctl_rm(State(app): State<App>, Json(req): Json<RmReq>) -> Response {
     let res: Result<RmResp> = async {
-        let policy = app.node.policy().await;
-        let r = ImageRef::parse(&req.reference, &policy, &app.node.id())?;
+        let r = app.node.resolve_image_ref(&req.reference).await?;
         match (&r.tag, req.all_tags) {
             (Some(_), true) => bail!("--all cannot be combined with a tag"),
             (None, false) => bail!("{r} has no tag; give one or pass --all to remove every tag"),
