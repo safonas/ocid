@@ -59,6 +59,7 @@ jobs:
           # for SARIF output and the gate fires on ANY severity.
           limit-severities-for-sarif: true
           version: v0.74.0 # pinned Trivy binary; the vuln DB still updates daily
+          trivy-config: .trivyignore
 
       - name: Upload image results to code scanning
         if: always()
