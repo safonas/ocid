@@ -8,10 +8,11 @@
 
 ## Status
 
-**Design approved; slice 1 implemented (this branch), slice 2 next.**
+**Design approved; slices 1 + 2 implemented and verified (one branch, PR
+gh#123) — including a live `E2E_ONLINE=1` run of the pkarr path.**
 Target release: **0.9.0** (after 0.8.0 final lands on main).
 
-Implementation slices (each lands as its own reviewed PR):
+Implementation slices:
 
 - **Slice 1** — connect by bare key: `ocictl connect <did:key | 64-hex>`,
   same for `POST /_ocid/peers` and `ocid --peer`; explicit `pkarr` config
@@ -19,7 +20,10 @@ Implementation slices (each lands as its own reviewed PR):
 - **Slice 2** — DNS record extension: optional `relay=`/`seed=` fields
   (v=ocid1 kept, spec overwritten in place — exactly one record exists in
   the world, the publisher re-publishes), `ocictl connect <domain>`,
-  `ocictl dns-record --relay/--seed`, dnsmasq e2e leg.
+  `ocictl dns-record --relay/--seed`, dnsmasq e2e leg (offline, node with
+  mDNS+pkarr off reaches the publisher through the signed hints and the
+  seed introducer), opt-in `E2E_ONLINE=1` leg for live pkarr (local runs
+  only, never CI). **Implemented.**
 
 ## Context
 
@@ -113,14 +117,27 @@ guarantees.
 
 - **Unit** (`ocid-core::dns`): parse/serialize/verify with 0–2 hint fields;
   unknown-field rejection stays; canonical-payload regression (a v1-parsed
-  record with hints must not verify against the hintless payload).
-- **e2e (offline, dnsmasq)**: node C's record served with `seed=B` (B a
-  known peer of A) → `ocictl connect <zone>` on A ends with C in A's peer
-  list and C's release pullable. Plus a `pkarr = "off"` status leg.
-- **Online (opt-in, `E2E_ONLINE=1`, never in CI)**: two cloud/VM nodes,
-  connect by bare hex across the internet through live pkarr; records the
-  real-world dial latency. Runs locally when invoked explicitly; the
-  build server never touches the live DHT.
+  record with hints must not verify against the hintless payload); TXT
+  string splitting at 255 bytes with byte-exact reassembly. **All in.**
+- **e2e (offline, dnsmasq)**: node C's record served with both hints
+  (relay deliberately bogus — hints are best-effort and must not break
+  the dial) → a fresh node with mDNS and pkarr off, bootstrapped to the
+  seed by ticket, runs `ocictl connect <zone>` and ends up as C's gossip
+  neighbor, then pulls C's release by domain name. Plus a
+  `pkarr = "off"` status leg and a multi-string TXT serving check.
+  **In (sections 10–11).**
+- **Online (opt-in, `E2E_ONLINE=1`, never in CI)**: G runs with relays +
+  pkarr on but mDNS off; A (relays on — iroh pkarr records publish the
+  relay URL only, so a relay-disabled dialer cannot use them) connects by
+  bare hex and reaches G as a neighbor through live pkarr (publish +
+  resolve via n0.computer into the mainline DHT, dial via the home relay).
+  Runs locally when invoked explicitly; the build server never touches
+  the live DHT. **In and passing (125/125 with the leg enabled).**
+  Notable iroh behaviors the leg works around, for future reference:
+  the first pkarr publish is empty (relay URL follows once the home relay
+  connection settles, ~seconds), and gossip retries a failed dial only
+  once — so the leg waits for the record to carry the relay URL before
+  connecting (host-side probe of the relay's HTTP API, key in z-base-32).
 
 ### 4. Documentation
 

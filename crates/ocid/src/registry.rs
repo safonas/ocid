@@ -1114,6 +1114,8 @@ async fn ctl_dns_resolve(State(app): State<App>, Query(req): Query<DnsResolveReq
         Ok(ZoneOutcome::Resolved {
             publisher,
             newly_pinned,
+            relay,
+            seed,
         }) => DnsResolveResp {
             zone: req.zone.clone(),
             state: if newly_pinned {
@@ -1122,24 +1124,32 @@ async fn ctl_dns_resolve(State(app): State<App>, Query(req): Query<DnsResolveReq
                 "pinned".into()
             },
             publisher: Some(publisher.to_string()),
+            relay,
+            seed: seed.map(|s| s.to_string()),
             detail: None,
         },
         Ok(ZoneOutcome::NoRecord) => DnsResolveResp {
             zone: req.zone.clone(),
             state: "no-record".into(),
             publisher: None,
+            relay: None,
+            seed: None,
             detail: None,
         },
         Ok(ZoneOutcome::Disabled) => DnsResolveResp {
             zone: req.zone.clone(),
             state: "disabled".into(),
             publisher: None,
+            relay: None,
+            seed: None,
             detail: None,
         },
         Err(e) => DnsResolveResp {
             zone: req.zone.clone(),
             state: "error".into(),
             publisher: None,
+            relay: None,
+            seed: None,
             detail: Some(format!("{e:#}")),
         },
     };

@@ -10,7 +10,7 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use iroh::{
     address_lookup::memory::MemoryLookup, endpoint::presets, protocol::Router, Endpoint,
-    EndpointAddr, EndpointId, RelayMode,
+    EndpointAddr, EndpointId, RelayMode, RelayUrl,
 };
 use iroh_blobs::{
     api::downloader::{Downloader, Shuffled},
@@ -124,6 +124,21 @@ pub fn parse_peer_spec(p: &str) -> Result<EndpointAddr> {
     }
 }
 
+/// Build a dial target for a DNS-resolved publisher: the id plus the
+/// record's signed `relay=` hint, if any. Best-effort — a hint that no
+/// longer parses is logged and dropped, never fatal (hints can go stale;
+/// the id and the signature are what carry trust).
+fn addr_with_relay_hint(publisher: PublisherId, relay: Option<&str>) -> EndpointAddr {
+    let mut addr = EndpointAddr::new(publisher);
+    if let Some(url) = relay {
+        match url.parse::<RelayUrl>() {
+            Ok(relay_url) => addr = addr.with_relay_url(relay_url),
+            Err(e) => tracing::warn!(%url, "ignoring unparseable relay hint: {e}"),
+        }
+    }
+    addr
+}
+
 /// Start the node and run until ctrl-c.
 pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
     // Pick rustls's ring provider up front — the tree pulls several rustls
@@ -173,7 +188,20 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
     for p in &opts.peers {
         let addr = if dns::is_domain_name(p) {
             match dns_service.resolve_zone(p).await? {
-                ZoneOutcome::Resolved { publisher, .. } => EndpointAddr::new(publisher),
+                ZoneOutcome::Resolved {
+                    publisher,
+                    relay,
+                    seed,
+                    ..
+                } => {
+                    // The introducer is remembered alongside the target:
+                    // both are swarm members, and gossip's address exchange
+                    // carries the target's address to us through it.
+                    if let Some(seed) = seed {
+                        peers.upsert(EndpointAddr::new(seed));
+                    }
+                    addr_with_relay_hint(publisher, relay.as_deref())
+                }
                 _ => bail!("no usable DNS record for {p:?}"),
             }
         } else {
@@ -823,16 +851,29 @@ impl Node {
     }
 
     /// Add a peer from a ticket, bare key, or DNS publisher name at runtime
-    /// and try to sync with it.
+    /// and try to sync with it. A DNS resolution's signed hints are used:
+    /// the `relay=` URL becomes a dial hint, and the `seed=` introducer is
+    /// remembered and introduced to our topics first — it is a swarm member
+    /// of the target, and gossip's address exchange resolves the target
+    /// through it even when neither pkarr nor mDNS can.
     pub async fn add_peer_spec(&self, spec: &str) -> Result<EndpointId> {
-        let addr = if dns::is_domain_name(spec) {
+        let (addr, seed) = if dns::is_domain_name(spec) {
             match self.dns.resolve_zone(spec).await? {
-                ZoneOutcome::Resolved { publisher, .. } => EndpointAddr::new(publisher),
+                ZoneOutcome::Resolved {
+                    publisher,
+                    relay,
+                    seed,
+                    ..
+                } => (addr_with_relay_hint(publisher, relay.as_deref()), seed),
                 _ => bail!("no usable DNS record for {spec:?}"),
             }
         } else {
-            parse_peer_spec(spec)?
+            (parse_peer_spec(spec)?, None)
         };
+        if let Some(seed) = seed {
+            self.remember_peer(EndpointAddr::new(seed)).await;
+            self.join_topics(seed).await;
+        }
         self.add_peer(addr).await
     }
 

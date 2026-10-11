@@ -39,6 +39,12 @@ pub enum ZoneOutcome {
         publisher: PublisherId,
         /// True when this resolution pinned the zone (TOFU first sight).
         newly_pinned: bool,
+        /// Signed reachability hint from the record: a relay URL the
+        /// publisher is reachable through, if the record carries one.
+        relay: Option<String>,
+        /// Signed reachability hint from the record: an introducer peer
+        /// that knows the publisher's address, if the record carries one.
+        seed: Option<PublisherId>,
     },
     /// No usable record — fall through to the alias/self name rules.
     NoRecord,
@@ -49,6 +55,8 @@ pub enum ZoneOutcome {
 enum Cached {
     Positive {
         publisher: PublisherId,
+        relay: Option<String>,
+        seed: Option<PublisherId>,
         expires: Instant,
     },
     Negative {
@@ -116,10 +124,17 @@ impl DnsService {
         let now = Instant::now();
         if let Some(hit) = self.cache.lock().expect("dns cache").get(zone) {
             match hit {
-                Cached::Positive { publisher, expires } if *expires > now => {
+                Cached::Positive {
+                    publisher,
+                    relay,
+                    seed,
+                    expires,
+                } if *expires > now => {
                     return Ok(ZoneOutcome::Resolved {
                         publisher: *publisher,
                         newly_pinned: false,
+                        relay: relay.clone(),
+                        seed: *seed,
                     });
                 }
                 Cached::Negative { expires } if *expires > now => {
@@ -138,20 +153,18 @@ impl DnsService {
             }
         };
 
-        // TXT records may carry several strings; the first parseable ocid
-        // record wins (ours always fits one 255-byte string).
+        // TXT records may carry several character-strings; the strings of
+        // one record are concatenated before parsing (RFC 7208 §3.1), so
+        // records with hints can span two strings. The first parseable
+        // ocid record wins.
         let mut record = None;
         let mut ttl = u32::MAX;
         for r in answer.answers() {
             ttl = ttl.min(r.ttl);
             if let RData::TXT(txt) = &r.data {
-                for s in txt.txt_data.iter() {
-                    if let Ok(parsed) = DnsRecord::parse(&String::from_utf8_lossy(s)) {
-                        record = Some(parsed);
-                        break;
-                    }
-                }
-                if record.is_some() {
+                let blob: Vec<u8> = txt.txt_data.concat();
+                if let Ok(parsed) = DnsRecord::parse(&String::from_utf8_lossy(&blob)) {
+                    record = Some(parsed);
                     break;
                 }
             }
@@ -165,14 +178,14 @@ impl DnsService {
         let mut pins = self.pins.lock().await;
         let validated = dns::validate_record(zone, &record, &pins, self.max_age_secs);
         let mut newly_pinned = false;
-        let publisher = match validated {
+        let (publisher, relay, seed) = match validated {
             Ok(DnsValidated::New(p)) => {
                 newly_pinned = true;
                 pins.pin(zone, &p.to_string());
                 pins.save(&self.paths)?;
-                p
+                (p, record.relay.clone(), record.seed)
             }
-            Ok(DnsValidated::Pinned(p)) => p,
+            Ok(DnsValidated::Pinned(p)) => (p, record.relay.clone(), record.seed),
             Err(e) => return Err(anyhow!("{e}")),
         };
         drop(pins);
@@ -183,12 +196,16 @@ impl DnsService {
             zone.to_string(),
             Cached::Positive {
                 publisher,
+                relay: relay.clone(),
+                seed,
                 expires: now + ttl,
             },
         );
         Ok(ZoneOutcome::Resolved {
             publisher,
             newly_pinned,
+            relay,
+            seed,
         })
     }
 
