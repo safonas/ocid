@@ -8,6 +8,7 @@
 
 # MkDocs
 /site
+.docs-venv
 /.mkdocs
 
 # Python

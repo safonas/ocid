@@ -50,7 +50,7 @@ offline `ocictl`.
 
 Vulnerability scanning runs in CI (`.github/workflows/security.yml`): Trivy
 scans the container image and working tree, and OpenSSF Scorecard reviews the
-repository. See [SECURITY.md](../SECURITY.md) for reporting and local scan
+repository. See [SECURITY.md](https://github.com/safonas/ocid/blob/main/SECURITY.md) for reporting and local scan
 commands.
 
 ## Runtime container image

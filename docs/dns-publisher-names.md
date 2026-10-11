@@ -240,6 +240,6 @@ A domain that has no record (or DNS is disabled) falls through to steps
 
 ## See also
 
-- [README.md](../README.md) — naming table, CLI reference
+- [README.md](https://github.com/safonas/ocid#readme) — naming table, CLI reference
 - [DESIGN.md](DESIGN.md) — architecture, trust boundaries, resolution diagram
-- [todos/02-dns-publisher-records.md](../todos/02-dns-publisher-records.md) — design notes, roadmap
+- [todos/02-dns-publisher-records.md](https://github.com/safonas/ocid/blob/main/todos/02-dns-publisher-records.md) — design notes, roadmap
