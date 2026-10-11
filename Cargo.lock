@@ -3028,6 +3028,7 @@ dependencies = [
  "clap",
  "hickory-resolver",
  "iroh",
+ "iroh-base",
  "iroh-blobs",
  "iroh-gossip",
  "iroh-mdns-address-lookup",

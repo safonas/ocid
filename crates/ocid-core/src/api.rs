@@ -18,6 +18,8 @@ pub struct Status {
     pub releases: usize,
     pub seeds: Vec<String>,
     pub follows: Vec<String>,
+    /// "on" or "off": whether the node publishes/resolves endpoint addresses via pkarr.
+    pub pkarr: String,
     pub pins: Vec<String>,
     pub version: String,
 }
@@ -42,7 +44,10 @@ pub struct ReleaseInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddPeerReq {
-    pub ticket: String,
+    /// Ticket, bare key (`did:key` or 64-hex), or DNS publisher name.
+    /// `ticket` stays accepted as an alias for one version.
+    #[serde(alias = "ticket")]
+    pub peer: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

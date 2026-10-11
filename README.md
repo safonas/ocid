@@ -83,7 +83,7 @@ The service runs as an ephemeral `DynamicUser` with state in `/var/lib/ocid`
 [Service]
 Environment=OCID_HOME=/var/lib/ocid
 ExecStart=
-ExecStart=/usr/bin/ocid --peer <ticket>
+ExecStart=/usr/bin/ocid --peer <peer>
 ```
 
 Uninstalling keeps `/var/lib/ocid`; on Debian `apt purge ocid` removes it too.
@@ -144,10 +144,13 @@ podman push --tls-verify=false docker.io/library/alpine:latest 127.0.0.1:5050/al
 ```
 
 Consume on a second node (bootstrap with the first node's ticket from
-`ocictl ticket`; on the same LAN mDNS finds it without a ticket):
+`ocictl ticket`; a bare key — `did:key` or 64-hex — works too, with mDNS
+and pkarr/DHT discovery finding the address; on the same LAN mDNS finds
+it without either):
 
 ```sh
 OCID_HOME=~/.ocid-b ocid --listen 127.0.0.1:5051 --peer <ticket>
+# or, no ticket round-trip: --peer <did:key> / ocictl connect <did:key>
 OCID_HOME=~/.ocid-b ocictl follow <publisher>          # replicate their newest releases
 podman pull --tls-verify=false 127.0.0.1:5051/<publisher-hex>/alpine:3
 ```
@@ -223,10 +226,10 @@ alice = "<alice-hex>"
 ## CLI
 
 ```
-ocid [--home DIR] [--listen ADDR] [--peer TICKET]... [--no-relay] [--no-metrics] [--tls]
+ocid [--home DIR] [--listen ADDR] [--peer PEER]... [--no-relay] [--no-metrics] [--tls]
 
 ocictl init | whoami | status | ticket | peers
-ocictl connect <ticket>                     add a peer and join gossip with it
+ocictl connect <peer>                       add a peer (ticket, did:key/hex, or DNS name)
 ocictl ls                                   images held locally, with the rule that keeps each one
 ocictl pull <ref>                           fetch a release from the swarm (as cache)
 ocictl publish [<ref>]                      (re-)announce your releases
@@ -276,7 +279,7 @@ tooling at that CA — podman's `certs.d` or `--cert-dir`, curl's `--cacert`,
 
 ```
 secret.key                      ed25519 secret (0600)
-config.toml                     listen, tls, relay, p2p_port, mdns, metrics, gc_*_secs, dns*
+config.toml                     listen, tls, relay, pkarr, p2p_port, mdns, metrics, gc_*_secs, dns*
 policy.toml                     follow / seed / pin / alias / [dns] mapping
 dns-pins.json                   TOFU pin store for DNS publisher names
 peers.json                      known peer addresses (bootstrap)

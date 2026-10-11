@@ -1,5 +1,23 @@
 //! Node configuration (`config.toml`) and seeding policy (`policy.toml`).
 //!
+//! ```toml
+//! # config.toml — daemon configuration (values shown are the defaults)
+//! listen = "127.0.0.1:5050"
+//! tls = "off"                # "off" (plain http) | "auto" (self-signed CA)
+//! relay = "default"          # "default" (n0 relays) | "disabled"
+//! pkarr = "on"               # publish/resolve endpoint addresses via pkarr
+//! p2p_port = 0               # fixed UDP port for iroh (0 = random)
+//! mdns = true                # discover other ocid nodes on the LAN
+//! fetch_timeout_secs = 120
+//! metrics = true
+//! gc_interval_secs = 3600
+//! gc_grace_secs = 86400
+//! blob_gc_interval_secs = 60
+//! dns = "on"                 # resolve `<domain>/<name>` refs via _ocid TXT records
+//! # dns_nameserver = "10.0.0.1:53"   # custom resolver (default: system)
+//! dns_max_age_secs = 2592000
+//! ```
+//!
 //! The policy is the heart of the Radicle-style replication model:
 //!
 //! * `seed` — image refs we replicate and serve to others
@@ -64,6 +82,10 @@ pub struct Config {
     pub dns_nameserver: Option<String>,
     /// Reject `_ocid` DNS records signed more than this many seconds ago.
     pub dns_max_age_secs: u64,
+    /// Publish and resolve endpoint addresses via pkarr. When "off", the
+    /// daemon does not add PkarrPublisher/PkarrResolver to the endpoint —
+    /// no address publishing, no lookup. Default: "on".
+    pub pkarr: PkarrMode,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -103,6 +125,17 @@ pub enum RelayMode {
     Disabled,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PkarrMode {
+    /// Publish and resolve endpoint addresses via pkarr (the default).
+    #[default]
+    On,
+    /// Do not add PkarrPublisher/PkarrResolver to the endpoint — no address
+    /// publishing, no lookup.
+    Off,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -119,6 +152,7 @@ impl Default for Config {
             dns: DnsMode::On,
             dns_nameserver: None,
             dns_max_age_secs: 30 * 24 * 3600,
+            pkarr: PkarrMode::On,
         }
     }
 }
@@ -896,5 +930,18 @@ pin = ["{alice}/app:0.9"]
             back.parse_publisher_arg("images.example.com").unwrap(),
             alice
         );
+    }
+
+    #[test]
+    fn config_pkarr_field() {
+        let mut c = Config::default();
+        assert_eq!(c.pkarr, PkarrMode::On);
+        c.pkarr = PkarrMode::Off;
+        assert_eq!(c.pkarr, PkarrMode::Off);
+
+        let text = toml::to_string(&c).unwrap();
+        assert!(text.contains("pkarr = \"off\""));
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.pkarr, PkarrMode::Off);
     }
 }

@@ -189,7 +189,7 @@ export class DashboardState {
     try {
       switch (action.kind) {
         case 'connect': {
-          const r = await c.connect(action.ticket);
+          const r = await c.connect(action.peer);
           detail = `connected to ${short(r.id)}`;
           break;
         }
