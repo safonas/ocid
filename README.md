@@ -151,6 +151,7 @@ it without either):
 ```sh
 OCID_HOME=~/.ocid-b ocid --listen 127.0.0.1:5051 --peer <ticket>
 # or, no ticket round-trip: --peer <did:key> / ocictl connect <did:key>
+# or, if the publisher has a DNS record: ocictl connect images.example.com
 OCID_HOME=~/.ocid-b ocictl follow <publisher>          # replicate their newest releases
 podman pull --tls-verify=false 127.0.0.1:5051/<publisher-hex>/alpine:3
 ```

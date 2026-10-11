@@ -90,7 +90,7 @@ Feature breakdown (gh#96, 6 commits on `feat/dns-records`):
   `crates/ocictl/src/main.rs` (the CLI prints the node's own public key
   on purpose — it is the product, not a secret)
 
-Follow-up (post-v0.8.0): pkarr/discovery-hint evaluation (one DNS
-name for identity + reachability — `relay=`/`seed=` fields so
-`ocictl connect images.example.com` bootstraps the swarm from the
-same record).
+Follow-up (post-v0.8.0): pkarr/discovery-hint evaluation — **moved to
+[todos/16](16-dht-pkarr-bootstrap.md)** and shipped there (0.9.0): the
+record carries optional signed `relay=`/`seed=` hints, and
+`ocictl connect <zone>` bootstraps the swarm from the same record.

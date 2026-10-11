@@ -4,15 +4,23 @@
 //! `_ocid.<zone>`:
 //!
 //! ```text
-//! v=ocid1 k=<64-hex publisher id> ts=<unix secs> sig=<128-hex>
+//! v=ocid1 k=<64-hex publisher id> ts=<unix secs> [relay=<url>] [seed=<64-hex>] sig=<128-hex>
 //! ```
 //!
 //! The signature is made by the publisher key itself over the canonical
-//! payload `ocid1 <zone> <k> <ts>`, which proves mutual consent: the zone
-//! admin points the name at the key, and only the key's owner could have
-//! signed the record. Releases under that publisher are signed by the same
-//! key, so trusting the name is the only leap — artifacts stay
-//! self-verifying.
+//! payload `ocid1 <zone> <k> <ts> [<relay>] [<seed>]`, which proves mutual
+//! consent: the zone admin points the name at the key, and only the key's
+//! owner could have signed the record. Releases under that publisher are
+//! signed by the same key, so trusting the name is the only leap —
+//! artifacts stay self-verifying.
+//!
+//! The optional `relay=`/`seed=` fields are reachability hints so a name is
+//! enough to *connect*, not just to verify (see todos/16): a relay the
+//! publisher is reachable through, and an introducer peer that is a member
+//! of the publisher's swarm topic. Hints are covered by the signature —
+//! DNS cannot invent or swap them — and they can go stale until the zone
+//! admin re-publishes; peers treat them as best-effort. Records without
+//! hints are exactly the pre-0.9 format and verify unchanged.
 //!
 //! Plain DNS is spoofable, so trust is anchored locally (TOFU): the first
 //! verified resolution is pinned in `$OCID_HOME/dns-pins.json` and later
@@ -23,7 +31,7 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
-use iroh_base::Signature;
+use iroh_base::{RelayUrl, Signature};
 use serde::{Deserialize, Serialize};
 
 use crate::identity::{is_hex_publisher, verify, Identity, PublisherId};
@@ -31,6 +39,9 @@ use crate::paths::Paths;
 
 /// The TXT record version this build understands.
 const VERSION: &str = "ocid1";
+
+/// A single DNS TXT character-string holds at most 255 bytes.
+const TXT_STRING_MAX: usize = 255;
 
 // ---------------------------------------------------------------------------
 // Record
@@ -43,6 +54,12 @@ pub struct DnsRecord {
     pub key: PublisherId,
     /// When the record was signed (unix seconds).
     pub ts: u64,
+    /// Reachability hint: a relay URL the publisher is reachable through
+    /// (`relay=`). Optional; covered by the signature.
+    pub relay: Option<String>,
+    /// Reachability hint: an introducer peer that knows the publisher's
+    /// address (`seed=`). Optional; covered by the signature.
+    pub seed: Option<PublisherId>,
     /// Signature by `key` over the canonical payload.
     pub sig: Signature,
 }
@@ -54,35 +71,95 @@ impl DnsRecord {
             .duration_since(UNIX_EPOCH)
             .context("system clock before the unix epoch")?
             .as_secs();
-        Self::sign_at(zone, id, ts)
+        Self::sign_full(zone, id, ts, None, None)
     }
 
     /// Sign a record for `zone` with an explicit timestamp (tests, tooling).
     pub fn sign_at(zone: &str, id: &Identity, ts: u64) -> Result<Self> {
+        Self::sign_full(zone, id, ts, None, None)
+    }
+
+    /// Sign a record for `zone` with optional reachability hints. `relay`
+    /// must be an absolute http(s) URL; `seed` is an introducer peer id.
+    /// Hints are part of the signed payload.
+    pub fn sign_full(
+        zone: &str,
+        id: &Identity,
+        ts: u64,
+        relay: Option<&str>,
+        seed: Option<PublisherId>,
+    ) -> Result<Self> {
         validate_zone(zone)?;
+        let relay = relay.map(validate_relay).transpose()?;
         let key = id.id();
         let sig = id
             .secret()
-            .sign(canonical_payload(zone, &key, ts).as_bytes());
-        Ok(Self { key, ts, sig })
+            .sign(canonical_payload(zone, &key, ts, relay.as_deref(), seed).as_bytes());
+        Ok(Self {
+            key,
+            ts,
+            relay,
+            seed,
+            sig,
+        })
     }
 
-    /// The TXT payload: one space-separated string, fits a single 255-byte
-    /// DNS TXT string.
+    /// The TXT payload: one space-separated string. With hints it may
+    /// exceed one 255-byte DNS TXT character-string — use
+    /// [`DnsRecord::txt_strings`] to publish.
     pub fn to_txt(&self) -> String {
-        format!(
-            "v={VERSION} k={} ts={} sig={}",
-            self.key,
-            self.ts,
-            hex::encode(self.sig.to_bytes())
-        )
+        let mut s = format!("v={VERSION} k={} ts={}", self.key, self.ts,);
+        if let Some(relay) = &self.relay {
+            s.push_str(&format!(" relay={relay}"));
+        }
+        if let Some(seed) = &self.seed {
+            s.push_str(&format!(" seed={seed}"));
+        }
+        s.push_str(&format!(" sig={}", hex::encode(self.sig.to_bytes())));
+        s
+    }
+
+    /// The record as DNS TXT character-strings: each at most 255 bytes,
+    /// never splitting a `key=value` token. A minimal record is one
+    /// string; hints can push it to two (consumers concatenate the
+    /// strings of one TXT record before parsing, per RFC 7208 §3.1 — so
+    /// every chunk except the last keeps its trailing space).
+    pub fn txt_strings(&self) -> Vec<String> {
+        let txt = self.to_txt();
+        if txt.len() <= TXT_STRING_MAX {
+            return vec![txt];
+        }
+        let mut out: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        for tok in txt.split(' ') {
+            // Space before the token, plus the trailing space the chunk
+            // carries when more tokens follow.
+            if !cur.is_empty() && cur.len() + 1 + tok.len() + 1 > TXT_STRING_MAX {
+                out.push(std::mem::take(&mut cur));
+            }
+            if !cur.is_empty() {
+                cur.push(' ');
+            }
+            cur.push_str(tok);
+        }
+        if !cur.is_empty() {
+            out.push(cur);
+        }
+        let n = out.len();
+        for chunk in &mut out[..n - 1] {
+            chunk.push(' ');
+        }
+        out
     }
 
     /// Parse a TXT string. Structural only — call [`DnsRecord::verify`]
-    /// before trusting it.
+    /// before trusting it. Field order in the TXT does not matter; the
+    /// canonical payload order is fixed by this crate.
     pub fn parse(txt: &str) -> Result<Self> {
         let mut key = None;
         let mut ts = None;
+        let mut relay = None;
+        let mut seed = None;
         let mut sig = None;
         let mut version = None;
         for tok in txt.split_whitespace() {
@@ -104,6 +181,16 @@ impl DnsRecord {
                             .context("record field ts must be unix seconds")?,
                     );
                 }
+                "relay" => relay = Some(validate_relay(v)?),
+                "seed" => {
+                    if !is_hex_publisher(v) {
+                        bail!("record field seed is not a 64-hex peer id");
+                    }
+                    seed = Some(
+                        v.parse::<PublisherId>()
+                            .map_err(|e| anyhow::anyhow!("record field seed: {e}"))?,
+                    );
+                }
                 "sig" => {
                     let bytes = hex::decode(v).context("record field sig is not hex")?;
                     let arr: [u8; 64] = bytes
@@ -120,16 +207,18 @@ impl DnsRecord {
         Ok(Self {
             key: key.context("record is missing k=")?,
             ts: ts.context("record is missing ts=")?,
+            relay,
+            seed,
             sig: sig.context("record is missing sig=")?,
         })
     }
 
     /// Verify the signature over the canonical payload for `zone`. A record
     /// cannot be replayed across zones: the zone is part of the signed
-    /// bytes.
+    /// bytes. Stripping or altering a hint breaks the signature too.
     pub fn verify_sig(&self, zone: &str) -> Result<()> {
         validate_zone(zone)?;
-        let payload = canonical_payload(zone, &self.key, self.ts);
+        let payload = canonical_payload(zone, &self.key, self.ts, self.relay.as_deref(), self.seed);
         verify(&self.key, payload.as_bytes(), &self.sig)
     }
 
@@ -143,9 +232,46 @@ impl DnsRecord {
     }
 }
 
-/// The exact bytes a record signature covers.
-fn canonical_payload(zone: &str, key: &PublisherId, ts: u64) -> String {
-    format!("{VERSION} {zone} {key} {ts}")
+/// Validate a `relay=` value: an absolute http(s) URL with no whitespace
+/// (the TXT format is space-separated), short enough to fit one DNS TXT
+/// character-string as a token.
+fn validate_relay(relay: &str) -> Result<String> {
+    if relay.chars().any(char::is_whitespace) {
+        bail!("relay URL must not contain whitespace");
+    }
+    let url: RelayUrl = relay
+        .parse()
+        .with_context(|| format!("relay {relay:?} is not a valid URL"))?;
+    match url.scheme() {
+        "http" | "https" => {}
+        other => bail!("relay URL scheme must be http or https, got {other:?}"),
+    }
+    if relay.len() + "relay=".len() > TXT_STRING_MAX {
+        bail!(
+            "relay URL is too long for a DNS TXT string ({})",
+            relay.len()
+        );
+    }
+    Ok(relay.to_string())
+}
+
+/// The exact bytes a record signature covers. Hints always come after the
+/// core fields, relay before seed, regardless of TXT field order.
+fn canonical_payload(
+    zone: &str,
+    key: &PublisherId,
+    ts: u64,
+    relay: Option<&str>,
+    seed: Option<PublisherId>,
+) -> String {
+    let mut s = format!("{VERSION} {zone} {key} {ts}");
+    if let Some(relay) = relay {
+        s.push_str(&format!(" {relay}"));
+    }
+    if let Some(seed) = seed {
+        s.push_str(&format!(" {seed}"));
+    }
+    s
 }
 
 /// A zone we are willing to look up: a syntactically valid DNS name. Strict
@@ -306,6 +432,116 @@ mod tests {
         let parsed = DnsRecord::parse(&rec.to_txt()).unwrap();
         assert_eq!(parsed, rec);
         assert!(parsed.verify_sig(zone()).is_ok());
+        // A hintless record is byte-identical to the pre-hints format and
+        // stays a single TXT string.
+        assert!(!rec.to_txt().contains("relay="));
+        assert!(!rec.to_txt().contains("seed="));
+        assert_eq!(rec.txt_strings().len(), 1);
+    }
+
+    #[test]
+    fn hints_roundtrip() {
+        let id = Identity::generate();
+        let peer = Identity::generate().id();
+        for (relay, seed) in [
+            (Some("https://relay.iroh.network"), Some(peer)),
+            (Some("https://relay.iroh.network"), None),
+            (None, Some(peer)),
+        ] {
+            let rec = DnsRecord::sign_full(zone(), &id, 1_700_000_000, relay, seed).unwrap();
+            let txt = rec.to_txt();
+            let parsed = DnsRecord::parse(&txt).unwrap();
+            assert_eq!(parsed, rec);
+            assert_eq!(parsed.relay.as_deref(), relay);
+            assert_eq!(parsed.seed, seed);
+            assert!(parsed.verify_sig(zone()).is_ok());
+            // TXT field order does not matter for parsing.
+            let shuffled = {
+                let mut toks: Vec<&str> = txt.split_whitespace().collect();
+                toks.reverse();
+                toks.join(" ")
+            };
+            assert_eq!(DnsRecord::parse(&shuffled).unwrap(), rec);
+        }
+    }
+
+    #[test]
+    fn hints_are_covered_by_the_signature() {
+        let id = Identity::generate();
+        let peer = Identity::generate().id();
+        let rec = DnsRecord::sign_full(
+            zone(),
+            &id,
+            1_700_000_000,
+            Some("https://relay.iroh.network"),
+            Some(peer),
+        )
+        .unwrap();
+        let txt = rec.to_txt();
+
+        // Stripping a hint from the TXT: parses, but the payload no longer
+        // matches what was signed.
+        let stripped = txt.replace(" relay=https://relay.iroh.network", "");
+        let parsed = DnsRecord::parse(&stripped).unwrap();
+        assert!(parsed.verify_sig(zone()).is_err());
+
+        // Swapping the relay URL for another valid one: same story.
+        let swapped = txt.replace("https://relay.iroh.network", "https://evil.example.com");
+        let parsed = DnsRecord::parse(&swapped).unwrap();
+        assert!(parsed.verify_sig(zone()).is_err());
+
+        // Swapping the seed id.
+        let other = Identity::generate().id();
+        let swapped_seed = txt.replace(&peer.to_string(), &other.to_string());
+        let parsed = DnsRecord::parse(&swapped_seed).unwrap();
+        assert!(parsed.verify_sig(zone()).is_err());
+    }
+
+    #[test]
+    fn hint_values_are_validated() {
+        let id = Identity::generate();
+        // Not a URL / wrong scheme / whitespace / too long.
+        assert!(DnsRecord::sign_full(zone(), &id, 1, Some("not-a-url"), None).is_err());
+        assert!(
+            DnsRecord::sign_full(zone(), &id, 1, Some("ftp://relay.example.com"), None).is_err()
+        );
+        assert!(
+            DnsRecord::sign_full(zone(), &id, 1, Some("https://re lay.example.com"), None).is_err()
+        );
+        let long = format!("https://{}.example.com", "a".repeat(300));
+        assert!(DnsRecord::sign_full(zone(), &id, 1, Some(&long), None).is_err());
+        // Bad seed hex.
+        assert!(DnsRecord::parse(&format!(
+            "v=ocid1 k={} ts=1 seed=zz sig={}",
+            id.id(),
+            "0".repeat(128)
+        ))
+        .is_err());
+        // Relay validation applies at parse time too.
+        assert!(DnsRecord::parse("v=ocid1 k=00 ts=1 relay=nope sig=00").is_err());
+    }
+
+    #[test]
+    fn long_records_split_into_txt_strings() {
+        let id = Identity::generate();
+        let peer = Identity::generate().id();
+        // k + ts + seed + sig already exceed one 255-byte string.
+        let rec = DnsRecord::sign_full(
+            zone(),
+            &id,
+            1_700_000_000,
+            Some("https://relay.iroh.network"),
+            Some(peer),
+        )
+        .unwrap();
+        let strings = rec.txt_strings();
+        assert!(strings.len() > 1, "hints record must split: {:?}", strings);
+        assert!(strings.iter().all(|s| s.len() <= 255));
+        // Concatenating the strings of one TXT record reconstructs the
+        // payload byte-for-byte (trailing spaces travel with the chunks).
+        let joined = strings.concat();
+        assert_eq!(joined, rec.to_txt());
+        assert_eq!(DnsRecord::parse(&joined).unwrap(), rec);
     }
 
     #[test]
