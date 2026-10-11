@@ -9,7 +9,7 @@
 # Base images are pinned by digest for reproducible builds; the tag is kept
 # for readability. Override with --build-arg if needed. Both are Wolfi-based
 # (Chainguard).
-ARG BUILDER_IMAGE=cgr.dev/chainguard/rust@sha256:582a81742d5038a25c0b07359762953d94dbbe17533ab6db5164882b82a2e15b
+ARG BUILDER_IMAGE=cgr.dev/chainguard/rust@sha256:e1c2aacfb7509ee10cbb7f633ef56e2a87a1dcee3a0e5f7662bec3a7fe54fb94
 # Wolfi rolling base (re-pin regularly for fresh security fixes).
 ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:1c451d46a0d5c4e9f2b38e0e8d3e299564a1aa95c21973efcc1980a9d1d2e73e
 # Reproducible layer timestamps: the release flow passes the tag commit time
