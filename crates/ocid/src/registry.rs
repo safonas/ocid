@@ -985,7 +985,7 @@ async fn ctl_peers(State(app): State<App>) -> Response {
 async fn ctl_add_peer(State(app): State<App>, Json(req): Json<AddPeerReq>) -> Response {
     ctl_result(
         app.node
-            .add_peer_ticket(&req.ticket)
+            .add_peer_spec(&req.peer)
             .await
             .map(|id| AddPeerResp { id }),
     )

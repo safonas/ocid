@@ -6,7 +6,7 @@
 #   OCID_BIN=/path scripts/e2e.sh
 #
 # Requirements on the host: bash, podman, curl, jq. `oras` enables the
-# referrers test (skipped when missing). Nodes use ports 15050/15051/15052
+# referrers test (skipped when missing). Nodes use ports 15050-15053
 # and a temporary OCID_HOME; everything is cleaned up on exit.
 #
 # Release timestamps are second-resolution, so consecutive pushes of the same
@@ -87,14 +87,16 @@ cleanup() {
     [[ -n "${PID_A:-}" ]] && kill "$PID_A" 2>/dev/null || true
     [[ -n "${PID_B:-}" ]] && kill "$PID_B" 2>/dev/null || true
     [[ -n "${PID_C:-}" ]] && kill "$PID_C" 2>/dev/null || true
+    [[ -n "${PID_D:-}" ]] && kill "$PID_D" 2>/dev/null || true
     [[ -n "${DNSPID:-}" ]] && kill "$DNSPID" 2>/dev/null || true
     sleep 0.5
     # shellcheck disable=SC2046
-    podman rmi -f $(podman images --format '{{.Repository}}:{{.Tag}}' | grep -E "^$REG_A/|^$REG_B/|^${REG_C:-unset}/" || true) >/dev/null 2>&1 || true
+    podman rmi -f $(podman images --format '{{.Repository}}:{{.Tag}}' | grep -E "^$REG_A/|^$REG_B/|^$REG_C/|^${REG_D:-unset}/" || true) >/dev/null 2>&1 || true
     if (( FAIL > 0 )); then
         echo "--- node A log ---"; tail -n 30 "$WORK/a.log" || true
         echo "--- node B log ---"; tail -n 30 "$WORK/b.log" || true
         [[ -f "$WORK/c.log" ]] && { echo "--- node C log ---"; tail -n 30 "$WORK/c.log" || true; }
+        [[ -f "$WORK/d.log" ]] && { echo "--- node D log ---"; tail -n 30 "$WORK/d.log" || true; }
     fi
     rm -rf "$WORK"
     echo
@@ -481,5 +483,38 @@ kill "$PID_B"; wait "$PID_B" 2>/dev/null || true; PID_B=
 sleep 0.5
 assert_contains "ls offline reads the index" "$(ctl_b ls)" "daemon not running"
 assert_contains "status reports daemon down" "$(ctl_b status 2>&1 || true)" "is not running"
+
+# ---------------------------------------------------------------------------
+# 10. connect without a ticket: bare keys via the control API and --peer
+# ---------------------------------------------------------------------------
+
+log "connect without a ticket (bare keys)"
+PORT_D=${PORT_D:-15053}
+REG_D="127.0.0.1:$PORT_D"
+HOME_D="$WORK/d"
+mkdir -p "$HOME_D"
+OCID_HOME="$HOME_D" RUST_LOG=ocid=info,warn "$OCID" --no-relay --listen "$REG_D" >"$WORK/d.log" 2>&1 &
+PID_D=$!
+require "node D up (no bootstrap peers)" 15 curl -sf "http://$REG_D/v2/"
+# (No "starts with no peers" check: mDNS on the same host populates the
+# peer list within moments, by design.)
+
+# Runtime connect by bare 64-hex id: no addresses, mDNS/pkarr finds A.
+assert_contains "ocictl connect accepts a bare hex id" "connected to $A" "$(OCID_HOME="$HOME_D" "$CTL" connect "$A")"
+require "D sees A as neighbor (bare hex)" 20 bash -c "OCID_HOME='$HOME_D' '$CTL' peers | grep -q '$A'"
+
+# The old request shape ({"ticket": ...}) keeps working for one version.
+code=$(curl -s -o "$WORK/alias.json" -w '%{http_code}' -X POST "http://$REG_D/_ocid/peers" \
+    -H 'content-type: application/json' -d "{\"ticket\": \"$TICKET_A\"}")
+assert_eq "POST /_ocid/peers with legacy ticket key -> 200" 200 "$code"
+assert_eq "legacy ticket key resolves to A" "$A" "$(jq -r .id "$WORK/alias.json")"
+
+# Restart path: bootstrap --peer with the did:key form.
+kill "$PID_D"; wait "$PID_D" 2>/dev/null || true; PID_D=
+sleep 0.5
+OCID_HOME="$HOME_D" RUST_LOG=ocid=info,warn "$OCID" --no-relay --listen "$REG_D" --peer "$A_DID" >"$WORK/d.log" 2>&1 &
+PID_D=$!
+require "node D up (bootstrapped by did:key)" 15 curl -sf "http://$REG_D/v2/"
+require "D sees A as neighbor (did:key bootstrap)" 20 bash -c "OCID_HOME='$HOME_D' '$CTL' peers | grep -q '$A'"
 
 log "done"

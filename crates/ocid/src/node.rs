@@ -24,7 +24,8 @@ use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use iroh_tickets::endpoint::EndpointTicket;
 use ocid_core::{
     api::{DaemonEvent, GcReport, GcReq, PeerInfo, PolicyChangeResp, RmResp, Status},
-    config::{self, Config, Mode, Peers, Policy, TlsMode},
+    config::{self, Config, Mode, Peers, PkarrMode, Policy, TlsMode},
+    dns,
     hash::Blake3,
     identity::{did_key, parse_publisher, Identity, PublisherId},
     oci::{Digest, ImageRef},
@@ -35,7 +36,7 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::task::AbortHandle;
 
 use crate::{
-    dns_resolver,
+    dns_resolver::{self, ZoneOutcome},
     metrics::{Exporter, Metrics},
     p2p::{
         self,
@@ -108,6 +109,21 @@ pub struct RunOptions {
     pub no_metrics: bool,
 }
 
+/// Parse a peer spec that carries its own reachability: a connection
+/// ticket (addresses included) or a bare key (`did:key` / 64-hex). A bare
+/// key produces an address with the id only — iroh's address lookup
+/// (pkarr, mDNS) finds the rest at dial time. DNS publisher names are not
+/// handled here: they need a resolver, so the callers resolve them.
+pub fn parse_peer_spec(p: &str) -> Result<EndpointAddr> {
+    if let Ok(ticket) = p.parse::<EndpointTicket>() {
+        Ok(ticket.endpoint_addr().clone())
+    } else if let Ok(id) = parse_publisher(p) {
+        Ok(EndpointAddr::new(id))
+    } else {
+        bail!("peer must be a ticket, bare key (did:key or 64-hex), or DNS publisher name: {p:?}")
+    }
+}
+
 /// Start the node and run until ctrl-c.
 pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
     // Pick rustls's ring provider up front — the tree pulls several rustls
@@ -153,11 +169,17 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
     }
     let policy = Policy::load(&paths)?;
     let mut peers = Peers::load(&paths)?;
+    let dns_service = dns_resolver::DnsService::from_config(&config, paths.clone())?;
     for p in &opts.peers {
-        let ticket: EndpointTicket = p
-            .parse()
-            .with_context(|| format!("invalid peer ticket {p:?}"))?;
-        peers.upsert(ticket.endpoint_addr().clone());
+        let addr = if dns::is_domain_name(p) {
+            match dns_service.resolve_zone(p).await? {
+                ZoneOutcome::Resolved { publisher, .. } => EndpointAddr::new(publisher),
+                _ => bail!("no usable DNS record for {p:?}"),
+            }
+        } else {
+            parse_peer_spec(p)?
+        };
+        peers.upsert(addr);
     }
     peers.save(&paths)?;
 
@@ -172,9 +194,19 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
     for p in &peers.peers {
         lookup.add_endpoint_info(p.clone());
     }
-    let mut builder = Endpoint::builder(presets::N0)
-        .secret_key(identity.secret().clone())
-        .address_lookup(lookup.clone());
+    // pkarr = "off" replaces the N0 preset with the minimal one: no
+    // PkarrPublisher (nothing about this endpoint leaves the machine via
+    // n0.computer/DHT) and no PkarrResolver (bare-key dials then rely on
+    // mDNS/tickets only). Relays are set explicitly either way — the
+    // minimal preset leaves them unset.
+    let mut builder = match config.pkarr {
+        PkarrMode::On => Endpoint::builder(presets::N0),
+        PkarrMode::Off => {
+            Endpoint::builder(presets::Minimal).relay_mode(iroh::endpoint::default_relay_mode())
+        }
+    }
+    .secret_key(identity.secret().clone())
+    .address_lookup(lookup.clone());
     if config.relay == config::RelayMode::Disabled {
         builder = builder.relay_mode(RelayMode::Disabled);
     }
@@ -224,8 +256,6 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
 
     let (events, _) = tokio::sync::broadcast::channel(512);
 
-    let dns = dns_resolver::DnsService::from_config(&config, paths.clone())?;
-
     let node = Arc::new(Node {
         paths: paths.clone(),
         identity,
@@ -237,7 +267,7 @@ pub async fn run(paths: Paths, opts: RunOptions) -> Result<()> {
         lookup,
         downloader,
         gossip: gossip.clone(),
-        dns,
+        dns: dns_service,
         swarm: swarm_tx,
         topics: Mutex::new(BTreeMap::new()),
         policy: RwLock::new(policy),
@@ -727,6 +757,11 @@ impl Node {
                 .collect(),
             pins: policy.pin.clone(),
             version: env!("CARGO_PKG_VERSION").to_string(),
+            pkarr: match self.config.pkarr {
+                PkarrMode::On => "on",
+                PkarrMode::Off => "off",
+            }
+            .to_string(),
         })
     }
 
@@ -779,14 +814,26 @@ impl Node {
         }
     }
 
-    /// Add a peer from a ticket at runtime and try to sync with it.
-    pub async fn add_peer_ticket(&self, ticket: &str) -> Result<EndpointId> {
-        let t: EndpointTicket = ticket.parse().context("invalid ticket")?;
-        let addr = t.endpoint_addr().clone();
+    /// Add a peer at runtime and try to sync with it.
+    pub async fn add_peer(&self, addr: EndpointAddr) -> Result<EndpointId> {
         let id = addr.id;
         self.remember_peer(addr).await;
         self.join_topics(id).await;
         Ok(id)
+    }
+
+    /// Add a peer from a ticket, bare key, or DNS publisher name at runtime
+    /// and try to sync with it.
+    pub async fn add_peer_spec(&self, spec: &str) -> Result<EndpointId> {
+        let addr = if dns::is_domain_name(spec) {
+            match self.dns.resolve_zone(spec).await? {
+                ZoneOutcome::Resolved { publisher, .. } => EndpointAddr::new(publisher),
+                _ => bail!("no usable DNS record for {spec:?}"),
+            }
+        } else {
+            parse_peer_spec(spec)?
+        };
+        self.add_peer(addr).await
     }
 
     /// A node appeared on the LAN (mDNS): join gossip with it and sync once.
@@ -1545,4 +1592,36 @@ impl Node {
 fn domain_slot(rule: &str) -> Option<&str> {
     let (first, _) = rule.split_once('/')?;
     ocid_core::dns::is_domain_name(first).then_some(first)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_peer_spec_forms() {
+        let id = Identity::generate().id();
+
+        // 64-hex form.
+        let addr = parse_peer_spec(&id.to_string()).unwrap();
+        assert_eq!(addr.id, id);
+        assert!(addr.is_empty(), "bare key carries no addrs");
+
+        // did:key form.
+        let addr = parse_peer_spec(&did_key(&id)).unwrap();
+        assert_eq!(addr.id, id);
+
+        // Ticket form round-trips (with or without addresses).
+        let ticket = EndpointTicket::new(EndpointAddr::new(id)).to_string();
+        let addr = parse_peer_spec(&ticket).unwrap();
+        assert_eq!(addr.id, id);
+
+        // Garbage is rejected with a helpful message.
+        let err = parse_peer_spec("not-a-peer").unwrap_err().to_string();
+        assert!(err.contains("ticket"), "error should mention ticket: {err}");
+        assert!(
+            err.contains("bare key"),
+            "error should mention bare key: {err}"
+        );
+    }
 }

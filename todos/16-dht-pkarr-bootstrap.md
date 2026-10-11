@@ -8,14 +8,14 @@
 
 ## Status
 
-**Design drafted — awaiting review (gate 1) before implementation.**
+**Design approved; slice 1 implemented (this branch), slice 2 next.**
 Target release: **0.9.0** (after 0.8.0 final lands on main).
 
 Implementation slices (each lands as its own reviewed PR):
 
 - **Slice 1** — connect by bare key: `ocictl connect <did:key | 64-hex>`,
   same for `POST /_ocid/peers` and `ocid --peer`; explicit `pkarr` config
-  + status surface.
+  + status surface. **Implemented.**
 - **Slice 2** — DNS record extension: optional `relay=`/`seed=` fields
   (v=ocid1 kept, spec overwritten in place — exactly one record exists in
   the world, the publisher re-publishes), `ocictl connect <domain>`,
@@ -100,12 +100,14 @@ plain pkarr resolution when the record carries none. Either way: no
 ticket.
 
 **`ocictl dns-record <zone>`** gains `--relay <url>` and
-`--seed <peer-id>` flags. Open question for review: default `--relay` to
-the node's current home relay when relay mode is on (records then carry
-it automatically), or require the explicit flag? Defaulting keeps
-`ocid.dev`-style single-publishers honest but embeds a possibly-changing
-URL in a 30-day record — leaning toward **explicit flags only**, since
-re-running `dns-record` is already required monthly for freshness.
+`--seed <peer-id>` flags. **Decision: explicit flags only** — the node's
+current relay is never embedded implicitly. A relay URL baked into a
+30-day record can go stale (the node may switch relays, or drop to
+`--no-relay`), and the record needs monthly re-signing for `ts` freshness
+anyway — re-stating the hints then is free, and a minimal record keeps
+working everywhere. Docs must carry a note: `relay=`/`seed=` hints can go
+stale until the record is re-published; peers treat them as hints, not
+guarantees.
 
 ### 3. Tests
 
@@ -117,7 +119,8 @@ re-running `dns-record` is already required monthly for freshness.
   list and C's release pullable. Plus a `pkarr = "off"` status leg.
 - **Online (opt-in, `E2E_ONLINE=1`, never in CI)**: two cloud/VM nodes,
   connect by bare hex across the internet through live pkarr; records the
-  real-world dial latency.
+  real-world dial latency. Runs locally when invoked explicitly; the
+  build server never touches the live DHT.
 
 ### 4. Documentation
 

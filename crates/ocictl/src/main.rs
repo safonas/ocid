@@ -63,8 +63,12 @@ enum Command {
     Ticket,
     /// List known peers.
     Peers,
-    /// Connect to a peer by ticket and remember it.
-    Connect { ticket: String },
+    /// Connect to a peer by ticket, bare key, or DNS publisher name.
+    Connect {
+        /// Peer to connect to: ticket, bare key (did:key or 64-hex), or DNS publisher name.
+        #[arg(value_name = "PEER")]
+        peer: String,
+    },
     /// List images held by this node.
     Ls,
     /// Fetch an image from the swarm into the local store.
@@ -178,6 +182,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
             println!("did        {}", s.did);
             println!("registry   {}", s.registry);
             println!("uptime     {}s", s.uptime_secs);
+            println!("pkarr      {}", s.pkarr);
             println!("neighbors  {}", s.neighbors.len());
             println!("peers      {}", s.known_peers);
             println!("releases   {}", s.releases);
@@ -195,7 +200,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
         Command::Peers => {
             let peers: Vec<PeerInfo> = client(paths)?.get("/_ocid/peers").await?;
             if peers.is_empty() {
-                println!("no peers known (use `ocictl connect <ticket>`)");
+                println!("no peers known (use `ocictl connect <peer>`)");
                 return Ok(());
             }
             let mut t = table(["PEER", "DID", "NEIGHBOR", "KNOWN", "LAST SEEN"]);
@@ -213,9 +218,9 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
             println!("{t}");
             Ok(())
         }
-        Command::Connect { ticket } => {
+        Command::Connect { peer } => {
             let v: AddPeerResp = client(paths)?
-                .post("/_ocid/peers", &serde_json::json!({ "ticket": ticket }))
+                .post("/_ocid/peers", &serde_json::json!({ "peer": peer }))
                 .await?;
             println!("connected to {}", v.id);
             Ok(())
@@ -850,5 +855,28 @@ fn human_size(n: u64) -> String {
         format!("{n} B")
     } else {
         format!("{v:.1} {}", UNITS[i])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn connect_command_parses_peer() {
+        let cli = Cli::parse_from([
+            "ocictl",
+            "connect",
+            "did:key:z6MkqRYqQiSgvZQdnBytw86Qbs2ZWUkGv22od935YF4s8M7V",
+        ]);
+        if let Command::Connect { peer } = cli.command {
+            assert_eq!(
+                peer,
+                "did:key:z6MkqRYqQiSgvZQdnBytw86Qbs2ZWUkGv22od935YF4s8M7V"
+            );
+        } else {
+            panic!("expected Connect command");
+        }
     }
 }

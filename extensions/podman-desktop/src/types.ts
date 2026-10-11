@@ -12,6 +12,7 @@ export interface Status {
   releases: number;
   seeds: string[];
   follows: string[];
+  pkarr: string;
   pins: string[];
   version: string;
 }
@@ -99,7 +100,7 @@ export interface TransferState {
 export type TimedEvent = DaemonEvent & { receivedAt: number };
 
 export type Action =
-  | { kind: 'connect'; ticket: string }
+  | { kind: 'connect'; peer: string }
   | { kind: 'pull'; reference: string }
   | { kind: 'announce'; reference?: string }
   | { kind: 'sync'; peer?: string }

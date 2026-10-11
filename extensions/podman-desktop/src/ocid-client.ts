@@ -95,8 +95,8 @@ export class OcidClient {
     return this.request<PeerInfo[]>('/_ocid/peers');
   }
 
-  connect(ticket: string): Promise<{ id: string }> {
-    return this.post('/_ocid/peers', { ticket });
+  connect(peer: string): Promise<{ id: string }> {
+    return this.post('/_ocid/peers', { peer });
   }
 
   pull(reference: string): Promise<unknown> {
