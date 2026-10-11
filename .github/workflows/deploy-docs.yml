@@ -8,6 +8,7 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'Cargo.toml'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
