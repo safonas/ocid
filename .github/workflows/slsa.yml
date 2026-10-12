@@ -53,10 +53,12 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
-        with:
-          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
+      # rustup resolves the toolchain from rust-toolchain.toml (auto-installs
+      # it on first use) and adds the targets onto that toolchain. Kept
+      # explicit so republishing old tags — whose rust-toolchain.toml predates
+      # any target/component declarations — still works.
+      - name: Install Rust toolchain and targets
+        run: rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
 
       - name: Cache cargo builds
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -169,10 +171,10 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
-        with:
-          targets: x86_64-apple-darwin
+      # See build-linux: rustup resolves the toolchain from
+      # rust-toolchain.toml; this adds the cross target onto it.
+      - name: Install Rust toolchain and targets
+        run: rustup target add x86_64-apple-darwin
 
       - name: Cache cargo builds
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
