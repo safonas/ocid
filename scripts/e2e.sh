@@ -6,8 +6,9 @@
 #   OCID_BIN=/path scripts/e2e.sh
 #
 # Requirements on the host: bash, podman, curl, jq. `oras` enables the
-# referrers test (skipped when missing). Nodes use ports 15050/15051/15052
-# and a temporary OCID_HOME; everything is cleaned up on exit.
+# referrers test (skipped when missing). Nodes use ports 15050-15053 (and
+# 15055 for the opt-in E2E_ONLINE=1 leg) and a temporary OCID_HOME;
+# everything is cleaned up on exit.
 #
 # Release timestamps are second-resolution, so consecutive pushes of the same
 # image are spaced >1s apart (`tick`) to make `latest`/`last:N` deterministic.
@@ -75,6 +76,8 @@ require() {
 
 ctl_a() { OCID_HOME="$HOME_A" "$CTL" "$@"; }
 ctl_b() { OCID_HOME="$HOME_B" "$CTL" "$@"; }
+ctl_c() { OCID_HOME="$HOME_C" "$CTL" "$@"; }
+ctl_d() { OCID_HOME="$HOME_D" "$CTL" "$@"; }
 push_a() { podman push -q --tls-verify=false "$1" "$REG_A/$2" >/dev/null; }
 tick() { sleep 1.2; }
 
@@ -87,14 +90,18 @@ cleanup() {
     [[ -n "${PID_A:-}" ]] && kill "$PID_A" 2>/dev/null || true
     [[ -n "${PID_B:-}" ]] && kill "$PID_B" 2>/dev/null || true
     [[ -n "${PID_C:-}" ]] && kill "$PID_C" 2>/dev/null || true
+    [[ -n "${PID_D:-}" ]] && kill "$PID_D" 2>/dev/null || true
+    [[ -n "${PID_G:-}" ]] && kill "$PID_G" 2>/dev/null || true
     [[ -n "${DNSPID:-}" ]] && kill "$DNSPID" 2>/dev/null || true
     sleep 0.5
     # shellcheck disable=SC2046
-    podman rmi -f $(podman images --format '{{.Repository}}:{{.Tag}}' | grep -E "^$REG_A/|^$REG_B/|^${REG_C:-unset}/" || true) >/dev/null 2>&1 || true
+    podman rmi -f $(podman images --format '{{.Repository}}:{{.Tag}}' | grep -E "^$REG_A/|^$REG_B/|^$REG_C/|^${REG_D:-unset}/" || true) >/dev/null 2>&1 || true
     if (( FAIL > 0 )); then
         echo "--- node A log ---"; tail -n 30 "$WORK/a.log" || true
         echo "--- node B log ---"; tail -n 30 "$WORK/b.log" || true
         [[ -f "$WORK/c.log" ]] && { echo "--- node C log ---"; tail -n 30 "$WORK/c.log" || true; }
+        [[ -f "$WORK/d.log" ]] && { echo "--- node D log ---"; tail -n 30 "$WORK/d.log" || true; }
+        [[ -f "$WORK/g.log" ]] && { echo "--- node G log ---"; tail -n 30 "$WORK/g.log" || true; }
     fi
     rm -rf "$WORK"
     echo
@@ -481,5 +488,181 @@ kill "$PID_B"; wait "$PID_B" 2>/dev/null || true; PID_B=
 sleep 0.5
 assert_contains "ls offline reads the index" "$(ctl_b ls)" "daemon not running"
 assert_contains "status reports daemon down" "$(ctl_b status 2>&1 || true)" "is not running"
+
+# ---------------------------------------------------------------------------
+# 10. connect without a ticket: bare keys via the control API and --peer
+# ---------------------------------------------------------------------------
+
+log "connect without a ticket (bare keys)"
+PORT_D=${PORT_D:-15053}
+REG_D="127.0.0.1:$PORT_D"
+HOME_D="$WORK/d"
+mkdir -p "$HOME_D"
+OCID_HOME="$HOME_D" RUST_LOG=ocid=info,warn "$OCID" --no-relay --listen "$REG_D" >"$WORK/d.log" 2>&1 &
+PID_D=$!
+require "node D up (no bootstrap peers)" 15 curl -sf "http://$REG_D/v2/"
+# (No "starts with no peers" check: mDNS on the same host populates the
+# peer list within moments, by design.)
+
+# Runtime connect by bare 64-hex id: no addresses, mDNS/pkarr finds A.
+assert_contains "ocictl connect accepts a bare hex id" "connected to $A" "$(OCID_HOME="$HOME_D" "$CTL" connect "$A")"
+require "D sees A as neighbor (bare hex)" 20 bash -c "OCID_HOME='$HOME_D' '$CTL' peers | grep -q '$A'"
+
+# The old request shape ({"ticket": ...}) keeps working for one version.
+code=$(curl -s -o "$WORK/alias.json" -w '%{http_code}' -X POST "http://$REG_D/_ocid/peers" \
+    -H 'content-type: application/json' -d "{\"ticket\": \"$TICKET_A\"}")
+assert_eq "POST /_ocid/peers with legacy ticket key -> 200" 200 "$code"
+assert_eq "legacy ticket key resolves to A" "$A" "$(jq -r .id "$WORK/alias.json")"
+
+# Restart path: bootstrap --peer with the did:key form.
+kill "$PID_D"; wait "$PID_D" 2>/dev/null || true; PID_D=
+sleep 0.5
+OCID_HOME="$HOME_D" RUST_LOG=ocid=info,warn "$OCID" --no-relay --listen "$REG_D" --peer "$A_DID" >"$WORK/d.log" 2>&1 &
+PID_D=$!
+require "node D up (bootstrapped by did:key)" 15 curl -sf "http://$REG_D/v2/"
+require "D sees A as neighbor (did:key bootstrap)" 20 bash -c "OCID_HOME='$HOME_D' '$CTL' peers | grep -q '$A'"
+
+# ---------------------------------------------------------------------------
+# 11. connect by DNS name: signed relay=/seed= hints in the record
+# ---------------------------------------------------------------------------
+
+log "connect by DNS name (relay/seed hints)"
+ZONE3="boot.ocid.test"
+C=$(ctl_c whoami | awk '/^id/{print $2}')
+
+# C publishes a record with BOTH hints. The relay is deliberately bogus
+# (NXDOMAIN): hints are best-effort, a bad one must not break the dial.
+# The seed is A — a swarm member of C and D's only reachable peer.
+REC_C_TXT=$(ctl_c dns-record "$ZONE3" --relay "https://relay.invalid" --seed "$A" \
+    | sed -n 's/^.*IN TXT //p')
+assert_contains "dns-record carries the signed relay hint" "$REC_C_TXT" "relay=https://relay.invalid"
+assert_contains "dns-record carries the signed seed hint" "$REC_C_TXT" "seed=$A"
+assert_contains "hint record spans two TXT strings" "$REC_C_TXT" '" "'
+
+# dnsmasq takes TXT strings comma-separated and verbatim: turn the
+# `" "` string boundary into a comma and drop the quotes, so chunk1 keeps
+# its trailing space and concatenation (RFC 7208) reconstructs the record.
+REC_C_DNSMASQ=$(printf '%s' "$REC_C_TXT" | sed 's/" "/,/g; s/"//g')
+
+# Serve it from dnsmasq (multi-string TXT: chunks comma-separated).
+kill "$DNSPID"; wait "$DNSPID" 2>/dev/null || true
+dnsmasq --no-daemon --listen-address=127.0.0.1 --port="$DNS_PORT" --no-hosts --no-resolv \
+    --txt-record="_ocid.$ZONE,$REC_F" --txt-record="_ocid.$ZONE2,$REC_S" \
+    --txt-record="_ocid.$ZONE3,$REC_C_DNSMASQ" >"$WORK/dnsmasq.log" 2>&1 &
+DNSPID=$!
+require "dnsmasq (hints leg) listening" 10 \
+    bash -c "exec 3<>/dev/udp/127.0.0.1/$DNS_PORT" 2>/dev/null \
+    || fail "dnsmasq did not restart (see $WORK/dnsmasq.log)"
+sleep 0.5
+
+# D restarts with a FRESH identity (wiped home): section 10's D was C's
+# mDNS neighbor, and its stale address would poison this leg. With mDNS
+# and pkarr both off, the ticket bootstraps D to the SEED (A — restarted
+# since section 1, so its fresh random p2p port means the section-1
+# TICKET_A is stale; ask the running daemon), the record's signed
+# relay=/seed= hints then drive `connect`: relay= as a dial hint (here
+# deliberately bogus — hints are best-effort), seed=A as the introducer
+# through whose gossip address exchange D learns C. This also exercises
+# pkarr = "off".
+kill "$PID_D"; wait "$PID_D" 2>/dev/null || true; PID_D=
+sleep 0.5
+rm -rf "$HOME_D"
+mkdir -p "$HOME_D"
+ctl_d init >/dev/null
+sed -i 's/^mdns = .*/mdns = false/; s/^pkarr = .*/pkarr = "off"/' "$HOME_D/config.toml"
+echo "dns_nameserver = \"127.0.0.1:$DNS_PORT\"" >> "$HOME_D/config.toml"
+TICKET_A_FRESH=$(ctl_a ticket)
+OCID_HOME="$HOME_D" RUST_LOG=ocid=debug,warn "$OCID" --no-relay --listen "$REG_D" --peer "$TICKET_A_FRESH" >"$WORK/d.log" 2>&1 &
+PID_D=$!
+require "node D up (fresh identity, mDNS off, pkarr off)" 15 curl -sf "http://$REG_D/v2/"
+assert_contains "status reports pkarr off" "$(ctl_d status)" "pkarr      off"
+# Neighbor, not merely known (peers.json entries also show in the table,
+# so grepping the table would lie): assert on the JSON field.
+require "D sees A as neighbor (fresh ticket bootstrap)" 20 \
+    bash -c "curl -s 'http://$REG_D/_ocid/peers' | jq -e '.[] | select(.id==\"$A\") | .neighbor'"
+# (No "D does not know C yet" assert: the swarm shuffle through A may
+# legitimately introduce C on its own — that IS the introducer mechanism.
+# The record's seed= makes it explicit; `connect` still drives it.)
+
+# Resolve shows the hints; connect uses them.
+assert_contains "resolve shows the relay hint" "$(ctl_d resolve "$ZONE3")" "https://relay.invalid"
+assert_contains "resolve shows the seed hint" "$(ctl_d resolve "$ZONE3")" "seed"
+out=$(ctl_d connect "$ZONE3")
+assert_contains "connect by DNS name reaches C" "$out" "connected to $C"
+require "D is C's gossip neighbor via the seed introducer" 30 \
+    bash -c "curl -s 'http://$REG_D/_ocid/peers' | jq -e '.[] | select(.id==\"$C\") | .neighbor'"
+
+# The point of it all: pull C's release by domain name, no ticket ever
+# exchanged between D and C.
+ctl_d pull "$ZONE3/alpine:9" >/dev/null \
+    && ok "pull by DNS name through the introduced swarm" || fail "pull via DNS name + seed"
+
+# ---------------------------------------------------------------------------
+# 12. online pkarr discovery (opt-in: E2E_ONLINE=1; NEVER in CI) — the
+#     live path: publish + resolve through n0.computer into the mainline
+#     DHT, connect by bare hex with no ticket and no mDNS.
+# ---------------------------------------------------------------------------
+
+if [[ "${E2E_ONLINE:-0}" == "1" ]]; then
+    log "online pkarr discovery (E2E_ONLINE=1)"
+    PORT_G=${PORT_G:-15055}
+    REG_G="127.0.0.1:$PORT_G"
+    HOME_G="$WORK/g"
+    mkdir -p "$HOME_G"
+    OCID_HOME="$HOME_G" "$CTL" init >/dev/null
+    # mDNS off: without it, A's only route to G is G's published pkarr
+    # record (relays on, pkarr on — the defaults).
+    sed -i 's/^mdns = .*/mdns = false/' "$HOME_G/config.toml"
+    OCID_HOME="$HOME_G" RUST_LOG=ocid=info,warn "$OCID" --listen "$REG_G" >"$WORK/g.log" 2>&1 &
+    PID_G=$!
+    require "node G up (relays on, pkarr on, mDNS off)" 15 curl -sf "http://$REG_G/v2/"
+    G=$(OCID_HOME="$HOME_G" "$CTL" whoami | awk '/^id/{print $2}')
+    assert_contains "G reports pkarr on" "$(OCID_HOME="$HOME_G" "$CTL" status)" "pkarr      on"
+
+    # iroh publishes pkarr records with the RELAY URL only (IPs stay
+    # private), so the DIALER must be able to use relays. A ran with
+    # --no-relay since section 1, which PERSISTED relay = "disabled" into
+    # its config.toml — flip it back before the flag-less restart. A
+    # keeps mDNS on (can't see G — G has it off) and pkarr on: G's pkarr
+    # record is A's only route to G.
+    kill "$PID_A"; wait "$PID_A" 2>/dev/null || true; PID_A=
+    sleep 0.5
+    sed -i 's/^relay = .*/relay = "default"/' "$HOME_A/config.toml"
+    OCID_HOME="$HOME_A" RUST_LOG=ocid=info,warn "$OCID" --listen "$REG_A" >>"$WORK/a.log" 2>&1 &
+    PID_A=$!
+    require "node A up (relays on)" 15 curl -sf "http://$REG_A/v2/"
+    assert_contains "A reports pkarr on" "$(ctl_a status)" "pkarr      on"
+
+    # A connects by bare hex: resolution (n0.computer → mainline DHT) and
+    # the relay dial both go over the internet. G publishes an EMPTY
+    # record first and adds its home relay URL once the relay connection
+    # settles (seconds later); a dial that resolves the empty record fails
+    # with "no addressing information" and is retried only once by gossip
+    # — so wait until the record actually carries the relay URL (the
+    # pkarr relay HTTP API serves the raw packet; the URL is plain text
+    # inside it), then connect.
+    if command -v python3 >/dev/null; then
+        Z32=$(python3 - "$G" <<'PYEOF'
+import sys
+z32 = "ybndrfg8ejkmcpqxot1uwisza345h769"
+key = bytes.fromhex(sys.argv[1])
+bits = "".join(f"{b:08b}" for b in key)
+print("".join(z32[int(bits[i:i+5].ljust(5, "0"), 2)] for i in range(0, len(bits), 5)))
+PYEOF
+)
+        require "G's pkarr record carries its relay URL" 60 \
+            bash -c "curl -sm 5 https://dns.iroh.link/pkarr/$Z32 | grep -aq relay"
+    else
+        sleep 15
+    fi
+    out=$(ctl_a connect "$G")
+    assert_contains "connect by bare hex accepted" "$out" "connected to $G"
+    require "A reaches G as neighbor via live pkarr" 60 \
+        bash -c "curl -s 'http://$REG_A/_ocid/peers' | jq -e '.[] | select(.id==\"$G\") | .neighbor'"
+
+    kill "$PID_G"; wait "$PID_G" 2>/dev/null || true; PID_G=
+else
+    skip "online pkarr discovery (opt-in: E2E_ONLINE=1; not run in CI)"
+fi
 
 log "done"

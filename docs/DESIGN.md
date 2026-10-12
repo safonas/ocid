@@ -106,14 +106,24 @@ DNS zone publishes a signed TXT record at `_ocid.&lt;zone&gt;` binding the
 zone to their publisher key:
 
 ```
-_oid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> sig=<128-hex>"
+_ocid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> [relay=<url>] [seed=<64-hex>] sig=<128-hex>"
 ```
 
 `sig` is an Ed25519 signature by the key it carries over the canonical
-payload `ocid1 <zone> <k> <ts>` — mutual consent: the zone admin points
-the name at the key, and only the key's owner could have signed it.
-Releases are signed by the same key, so once the name is trusted every
-artifact under it is self-verifying.
+payload `ocid1 <zone> <k> <ts> [<relay>] [<seed>]` — mutual consent: the
+zone admin points the name at the key, and only the key's owner could
+have signed it. Releases are signed by the same key, so once the name is
+trusted every artifact under it is self-verifying.
+
+The optional hints make the name a **bootstrap**, not just an alias:
+`relay=` is a dial hint, `seed=` an introducer peer — `ocictl connect
+<zone>` (and `ocid --peer <zone>`) resolve the name and dial the
+publisher with them, no ticket exchange required. Hints are signed
+(DNS cannot invent or swap them) but can go stale; they are best-effort
+dial candidates, never a trust input — content verifies itself however
+the connection was found. Without hints, the bare key resolves via
+iroh's pkarr/DHT address lookup (`pkarr = "off"` disables both
+publishing and lookup).
 
 DNS is an untrusted lookup; trust is anchored locally:
 
@@ -361,6 +371,7 @@ flowchart TD
 | `ocid/sync/1` | `Hello{addr}`, `Inventory`, `GetRelease`, `ListTags` — one bi-stream per request; releases returned as their signed JSON bytes | postcard framing |
 | `/iroh-bytes/…` (iroh-blobs) | blob download by BLAKE3 hash with incremental verification | bao |
 | mDNS `_ocid._udp.local` | LAN discovery of other ocid endpoints (no tickets needed) | iroh-mdns-address-lookup |
+| pkarr / mainline DHT | internet-wide address publishing + lookup by bare key (n0.computer relay re-publishes into the DHT; `pkarr = "off"` disables) | iroh `presets::N0` |
 
 Announcements are deliberately tiny (summary only) so they fit gossip limits;
 the signed record is always fetched and verified via `sync`.

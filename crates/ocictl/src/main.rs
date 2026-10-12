@@ -50,6 +50,16 @@ enum Command {
         /// tooling; records older than the freshness window are rejected).
         #[arg(long)]
         ts: Option<u64>,
+        /// Reachability hint: a relay URL this node is reachable through.
+        /// Explicit — never auto-filled. Covered by the signature; can go
+        /// stale until the record is re-published.
+        #[arg(long)]
+        relay: Option<String>,
+        /// Reachability hint: an introducer peer (did:key or 64-hex) that
+        /// is a member of this node's swarm topic. Explicit — never
+        /// auto-filled. Covered by the signature.
+        #[arg(long)]
+        seed: Option<String>,
     },
     /// Resolve a DNS publisher name against the running daemon: which
     /// publisher it maps to, and the pin state (pins on first sight).
@@ -63,8 +73,12 @@ enum Command {
     Ticket,
     /// List known peers.
     Peers,
-    /// Connect to a peer by ticket and remember it.
-    Connect { ticket: String },
+    /// Connect to a peer by ticket, bare key, or DNS publisher name.
+    Connect {
+        /// Peer to connect to: ticket, bare key (did:key or 64-hex), or DNS publisher name.
+        #[arg(value_name = "PEER")]
+        peer: String,
+    },
     /// List images held by this node.
     Ls,
     /// Fetch an image from the swarm into the local store.
@@ -168,7 +182,12 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
     match command {
         Command::Init => init(paths),
         Command::Whoami => whoami(paths),
-        Command::DnsRecord { zone, ts } => dns_record(paths, &zone, ts),
+        Command::DnsRecord {
+            zone,
+            ts,
+            relay,
+            seed,
+        } => dns_record(paths, &zone, ts, relay.as_deref(), seed.as_deref()),
         Command::Resolve { zone } => dns_resolve(paths, &zone).await,
         Command::DnsUnpin { zone } => dns_unpin(paths, &zone).await,
         Command::Status => {
@@ -178,6 +197,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
             println!("did        {}", s.did);
             println!("registry   {}", s.registry);
             println!("uptime     {}s", s.uptime_secs);
+            println!("pkarr      {}", s.pkarr);
             println!("neighbors  {}", s.neighbors.len());
             println!("peers      {}", s.known_peers);
             println!("releases   {}", s.releases);
@@ -195,7 +215,7 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
         Command::Peers => {
             let peers: Vec<PeerInfo> = client(paths)?.get("/_ocid/peers").await?;
             if peers.is_empty() {
-                println!("no peers known (use `ocictl connect <ticket>`)");
+                println!("no peers known (use `ocictl connect <peer>`)");
                 return Ok(());
             }
             let mut t = table(["PEER", "DID", "NEIGHBOR", "KNOWN", "LAST SEEN"]);
@@ -213,9 +233,9 @@ async fn run(command: Command, paths: &Paths) -> Result<()> {
             println!("{t}");
             Ok(())
         }
-        Command::Connect { ticket } => {
+        Command::Connect { peer } => {
             let v: AddPeerResp = client(paths)?
-                .post("/_ocid/peers", &serde_json::json!({ "ticket": ticket }))
+                .post("/_ocid/peers", &serde_json::json!({ "peer": peer }))
                 .await?;
             println!("connected to {}", v.id);
             Ok(())
@@ -586,23 +606,42 @@ fn whoami(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
-/// `ocictl dns-record [--ts <unix>] <zone>` — print the signed TXT record
-/// binding `zone` to this node's publisher id. Fully offline: signs with
-/// the local identity; publishing into the DNS zone is the admin's job.
-fn dns_record(paths: &Paths, zone: &str, ts: Option<u64>) -> Result<()> {
+/// `ocictl dns-record [--ts <unix>] [--relay <url>] [--seed <peer>]
+/// <zone>` — print the signed TXT record binding `zone` to this node's
+/// publisher id. Fully offline: signs with the local identity; publishing
+/// into the DNS zone is the admin's job. Hints are explicit opt-in.
+fn dns_record(
+    paths: &Paths,
+    zone: &str,
+    ts: Option<u64>,
+    relay: Option<&str>,
+    seed: Option<&str>,
+) -> Result<()> {
     let id = Identity::load(paths)?;
-    let rec = match ts {
-        Some(ts) => ocid_core::dns::DnsRecord::sign_at(zone, &id, ts)?,
-        None => ocid_core::dns::DnsRecord::new(zone, &id)?,
+    let seed = seed.map(parse_publisher).transpose()?;
+    let ts = match ts {
+        Some(ts) => ts,
+        None => std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs(),
     };
+    let rec = ocid_core::dns::DnsRecord::sign_full(zone, &id, ts, relay, seed)?;
     let cfg = Config::load(paths)?;
     let scheme = match cfg.tls {
         ocid_core::config::TlsMode::Auto => "https",
         ocid_core::config::TlsMode::Off => "http",
     };
+    // One quoted string per DNS TXT character-string (records with hints
+    // can exceed the 255-byte single-string limit).
+    let strings = rec
+        .txt_strings()
+        .iter()
+        .map(|s| format!("\"{s}\""))
+        .collect::<Vec<_>>()
+        .join(" ");
     println!("Publish this record in the {zone} zone:");
     println!();
-    println!("  _ocid.{zone}. 300 IN TXT \"{}\"", rec.to_txt());
+    println!("  _ocid.{zone}. 300 IN TXT {strings}");
     println!();
     println!("Once it propagates, pulls use the name instead of hex:");
     println!();
@@ -610,6 +649,13 @@ fn dns_record(paths: &Paths, zone: &str, ts: Option<u64>) -> Result<()> {
         "  podman pull {scheme}://{}/{zone}/<name>:<tag>",
         cfg.listen
     );
+    if relay.is_some() || seed.is_some() {
+        println!();
+        println!("The relay/seed hints make `ocictl connect {zone}` work without");
+        println!("a ticket: the relay is a dial hint, the seed an introducer peer.");
+        println!("Hints are covered by the signature but can go stale — re-run");
+        println!("and re-publish whenever your relay or seed peer changes.");
+    }
     println!();
     println!("The signature binds the record to this zone and your publisher");
     println!("key (run `ocictl whoami` to see both forms).");
@@ -632,6 +678,15 @@ async fn dns_resolve(paths: &Paths, zone: &str) -> Result<()> {
             println!("zone       {}", resp.zone);
             println!("publisher  {publisher}");
             println!("state      {} (verified, fresh, TOFU-pinned)", resp.state);
+            if let Some(relay) = &resp.relay {
+                println!("relay      {relay} (signed hint)");
+            }
+            if let Some(seed) = &resp.seed {
+                println!("seed       {seed} (signed introducer hint)");
+            }
+            if resp.relay.is_some() || resp.seed.is_some() {
+                println!("connect:   ocictl connect {zone} (no ticket needed)",);
+            }
             println!();
             println!("pulls via:  podman pull <registry>/{zone}/<name>:<tag>");
         }
@@ -850,5 +905,28 @@ fn human_size(n: u64) -> String {
         format!("{n} B")
     } else {
         format!("{v:.1} {}", UNITS[i])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn connect_command_parses_peer() {
+        let cli = Cli::parse_from([
+            "ocictl",
+            "connect",
+            "did:key:z6MkqRYqQiSgvZQdnBytw86Qbs2ZWUkGv22od935YF4s8M7V",
+        ]);
+        if let Command::Connect { peer } = cli.command {
+            assert_eq!(
+                peer,
+                "did:key:z6MkqRYqQiSgvZQdnBytw86Qbs2ZWUkGv22od935YF4s8M7V"
+            );
+        } else {
+            panic!("expected Connect command");
+        }
     }
 }

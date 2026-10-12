@@ -32,7 +32,7 @@ struct Args {
     /// certificate (persisted into config.toml; CA in $OCID_HOME/tls).
     #[arg(long)]
     tls: bool,
-    /// Bootstrap peer ticket(s) (from `ocictl ticket` on another node).
+    /// Bootstrap peer: ticket, bare key (did:key or 64-hex), or DNS publisher name.
     #[arg(long = "peer")]
     peers: Vec<String>,
     /// Disable relay servers (direct/LAN connections only).
