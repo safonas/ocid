@@ -7,7 +7,7 @@
 
   let { peers, status }: { peers: PeerInfo[]; status?: Status } = $props();
 
-  let ticket = $state('');
+  let peer = $state('');
 
   /** A disconnected peer not heard from in over a week. */
   const WEEK_SECS = 7 * 86_400;
@@ -33,9 +33,9 @@
   });
 
   function connect(): void {
-    const t = ticket.trim();
-    if (t) sendAction({ kind: 'connect', ticket: t });
-    ticket = '';
+    const t = peer.trim();
+    if (t) sendAction({ kind: 'connect', peer: t });
+    peer = '';
   }
 </script>
 
@@ -43,16 +43,16 @@
   <textarea
     class="mono"
     rows="1"
-    placeholder="paste a connection ticket…"
-    bind:value={ticket}
+    placeholder="paste a ticket, did:key / hex id, or DNS name…"
+    bind:value={peer}
   ></textarea>
   <Button onclick={connect}>Connect</Button>
 </div>
 
 {#if peers.length === 0}
   <p class="dim">
-    No peers known yet. Ask a teammate for their ticket (Peers are also discovered
-    automatically on the LAN via mDNS).
+    No peers known yet. Ask a teammate for their ticket or publisher name (peers are also
+    discovered automatically on the LAN via mDNS).
   </p>
 {:else}
   <div class="table-wrap">
