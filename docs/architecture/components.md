@@ -120,6 +120,7 @@ flowchart TB
 | **ocid/sync/1** | Sync protocol | Fetch releases/blobs from peers |
 | **iroh-blobs** | Blob transfer | Download/upload blobs with incremental verification |
 | **mDNS** | Local discovery | Discover other ocid nodes on the local network |
+| **pkarr** | Internet discovery | Publish/resolve endpoint addresses by bare key (mainline DHT via n0.computer) |
 | **iroh Endpoint** | QUIC endpoint | Handle NAT traversal, hole-punching, relays |
 
 ---

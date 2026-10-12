@@ -712,6 +712,11 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
                 Color::Cyan,
             ));
             spans.extend(kv("up", format!("{}m", s.uptime_secs / 60), Color::White));
+            // Only surface pkarr when it's off (the default is on) — an
+            // off node can't dial bare keys, worth a hint in the header.
+            if s.pkarr == "off" {
+                spans.extend(kv("pkarr", "off".to_string(), Color::DarkGray));
+            }
             spans.extend(kv("v", s.version.clone(), Color::DarkGray));
         }
         None => spans.push(Span::styled(

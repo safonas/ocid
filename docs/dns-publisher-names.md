@@ -22,14 +22,21 @@ A DNS zone claims a human name for a publisher key via a **signed TXT
 record** at `_ocid.<zone>`:
 
 ```
-_oid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> sig=<128-hex>"
+_ocid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> [relay=<url>] [seed=<64-hex>] sig=<128-hex>"
 ```
 
 The signature is made by the publisher key itself over the canonical
-payload `ocid1 <zone> <k> <ts>`. This proves **mutual consent**: the zone
-admin points the name at the key, and only the key's owner could have
-signed the record. A domain cannot be saddled with a key, and a key
-cannot claim a domain it wasn't published under.
+payload `ocid1 <zone> <k> <ts> [<relay>] [<seed>]`. This proves **mutual
+consent**: the zone admin points the name at the key, and only the key's
+owner could have signed the record. A domain cannot be saddled with a key,
+and a key cannot claim a domain it wasn't published under.
+
+The optional `relay=`/`seed=` fields are **reachability hints** so a name
+is enough to *connect*, not just to verify (see
+[Connect by name](#connect-by-name)). They are covered by the signature —
+DNS cannot invent or swap them — but they can go stale until the record is
+re-published, so peers treat them as best-effort. Records without hints
+are the original format and verify unchanged.
 
 Since every release is already signed by the publisher key, the DNS
 record only has to convince you **which key owns the name** — everything
@@ -77,6 +84,38 @@ ocid infrastructure is involved — any DNS provider works.
 To refresh the timestamp before it ages out (records older than 30 days
 are rejected), re-run `ocictl dns-record` and re-publish.
 
+### Reachability hints: `--relay`, `--seed` (optional)
+
+By default the record proves *identity* only — connecting still needs a
+ticket, mDNS, or pkarr discovery. Two optional hints make
+`ocictl connect <zone>` work with nothing else:
+
+```sh
+ocictl dns-record images.example.com \
+    --relay https://use1-1.relay.iroh.network \
+    --seed did:key:z6Mk…   # a peer that gossips with you
+```
+
+- `--relay <url>` — a relay server you are reachable through; peers use
+  it as a dial hint.
+- `--seed <peer-id>` — an introducer: a peer that is a member of your
+  swarm topic. Peers dial it first, and gossip's address exchange carries
+  your address to them through it.
+
+Both are **explicit opt-in and never auto-filled**: your daemon's current
+relay can change at any time, and a URL baked into a 30-day record would
+go stale silently. Since the record needs monthly re-signing anyway
+(freshness), restating the hints then is free — re-run and re-publish
+whenever your relay or seed peer changes.
+
+Records with hints exceed the 255-byte single TXT string; the command
+prints them as multiple quoted strings (standard multi-string TXT, RFC
+7208 §3.1 concatenation):
+
+```
+_ocid.images.example.com. 300 IN TXT "v=ocid1 k=… ts=… relay=… seed=…" "sig=…"
+```
+
 ### Zone requirements
 
 The zone must be a syntactically valid DNS name:
@@ -100,6 +139,32 @@ The daemon resolves `images.example.com` → publisher key via DNS,
 verifies the signature, pins it (TOFU first sight), and fetches the
 release from that publisher on demand.
 
+### Connect by name
+
+A DNS name is also a peer address — `ocictl connect` accepts it alongside
+tickets and bare keys:
+
+```sh
+ocictl connect images.example.com
+```
+
+The daemon resolves and pins the name as above, then dials the publisher.
+If the record carries hints, they are used: the `relay=` URL becomes a
+dial hint, and the `seed=` introducer is dialed first — gossip's address
+exchange then carries the publisher's address to you through it. Without
+hints, the bare key goes to iroh's pkarr/DHT discovery. Either way, no
+ticket needs to have been exchanged.
+
+`ocid --peer images.example.com` (bootstrap at startup) and
+`POST /_ocid/peers {"peer": "images.example.com"}` behave the same.
+
+**A note on relays:** a pkarr record publishes the peer's relay URL only
+(iroh keeps IP addresses private), so the *dialer* must be able to use
+relays for internet-wide bare-key connects — keep `relay = "default"`.
+A node with `relay = "disabled"` still reaches peers on its LAN (mDNS)
+and anyone whose ticket or DNS record carries a usable hint; it cannot
+dial through the relay a bare-key lookup returns.
+
 ### Inspect a name
 
 Needs the daemon running (it performs the DNS lookup):
@@ -112,9 +177,14 @@ ocictl resolve images.example.com
 zone       images.example.com
 publisher  3f9a…c1
 state      pinned (verified, fresh, TOFU-pinned)
+relay      https://use1-1.relay.iroh.network (signed hint)
+seed       9b21…77 (signed introducer hint)
+connect:   ocictl connect images.example.com (no ticket needed)
 
 pulls via:  podman pull <registry>/images.example.com/<name>:<tag>
 ```
+
+(The `relay`/`seed` lines appear only when the record carries hints.)
 
 States: `pinned` (existing pin confirmed), `new` (pinned now),
 `no-record` (falls through to name rules), `disabled` (`dns = "off"`),
@@ -219,6 +289,13 @@ A domain that has no record (or DNS is disabled) falls through to steps
   key, resolution fails loudly. The error message names both keys.
 - **Stale records:** a record signed more than `dns_max_age_secs` ago is
   rejected even if the signature is valid — forces periodic re-publishing.
+- **Hints can go stale:** `relay=`/`seed=` are covered by the signature,
+  so DNS cannot invent or swap them, but the *values* describe the state
+  of the world when the record was signed. A relay that has since moved
+  or a seed peer that has since gone offline simply fails as a dial
+  candidate — peers fall back to pkarr/mDNS/tickets and never trust a
+  hint over verified content (blobs and releases verify themselves
+  regardless of how the connection was found).
 - **No DNSSEC required:** the signature is the security boundary, not
   DNSSEC. (Opportunistic DNSSEC validation may come later.)
 - **Offline after first sight:** once pinned, the name resolves from the

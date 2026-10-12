@@ -18,6 +18,8 @@ pub struct Status {
     pub releases: usize,
     pub seeds: Vec<String>,
     pub follows: Vec<String>,
+    /// "on" or "off": whether the node publishes/resolves endpoint addresses via pkarr.
+    pub pkarr: String,
     pub pins: Vec<String>,
     pub version: String,
 }
@@ -42,7 +44,10 @@ pub struct ReleaseInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddPeerReq {
-    pub ticket: String,
+    /// Ticket, bare key (`did:key` or 64-hex), or DNS publisher name.
+    /// `ticket` stays accepted as an alias for one version.
+    #[serde(alias = "ticket")]
+    pub peer: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +134,15 @@ pub struct DnsResolveResp {
     /// (falls through to name rules), `disabled` (dns = off), or `error`.
     pub state: String,
     pub publisher: Option<String>,
+    /// Signed reachability hint from the record, when present: a relay URL
+    /// the publisher is reachable through. Can go stale until the zone
+    /// admin re-publishes; peers treat it as best-effort.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relay: Option<String>,
+    /// Signed reachability hint from the record, when present: an
+    /// introducer peer that knows the publisher's address (64-hex).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<String>,
     /// Human-readable detail for the `error` state (stale record, pin
     /// mismatch, bad signature…).
     pub detail: Option<String>,
