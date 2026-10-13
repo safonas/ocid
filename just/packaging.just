@@ -29,7 +29,7 @@ vol_target := project + "-target"
 host_uid := `id -u`
 host_gid := `id -g`
 
-nfpm_image := "ghcr.io/goreleaser/nfpm:v2.47.0@sha256:a662cb167d7b6d3a83920c83d76b12d02b8ac5dd2c13e5c62c15270b23f6df0c"
+nfpm_image := "ghcr.io/goreleaser/nfpm:v2.48.0@sha256:d57a1452e7a019896b355f7b1ec67262278f6c503631f652d4fce7aef9ac8df7"
 
 # Host -> nfpm arch mapping, resolved by just (not the shell).
 nfpm_arch := if arch() == "x86_64" { "amd64" } else if arch() == "aarch64" { "arm64" } else { error("unsupported arch: " + arch()) }
