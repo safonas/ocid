@@ -60,6 +60,31 @@ Managed by `.pre-commit-config.yaml`.
   OpenSSF Scorecard files a "Pinned-Dependencies" alert for it — that alert is expected and should
   be dismissed as *won't fix* with a reference to this note.
 
+### Renovate dependency updates
+
+Renovate runs weekly (Mondays before 6am UTC) and opens PRs; automerge is
+disabled by config, so PRs must be merged manually — including by agents.
+Find open ones with `gh pr list --author app/renovate --state open`.
+
+- **Merge strictly one PR at a time.** Every merge to `main` invalidates the
+  other open PRs' required checks, forcing full re-runs. Typical durations:
+  CI (fmt + clippy + test) ~1–2 min, OpenSSF Scorecard ~20 s, CodeQL ~6 min,
+  Trivy ~8–10 min.
+- **Merging:** a ruleset on `main` blocks merge commits and requires status
+  checks. Poll `gh pr checks <n>` until it exits 0 (its Scorecard line shows
+  "skipping" on PRs — that variant only runs on `main`), then merge with
+  `gh pr merge <n> --rebase --admin`. If the API refuses with a ruleset or
+  OAuth workflow-scope error before checks finish, wait and retry. After
+  each merge: `git pull github main`, then move to the next PR.
+- **Grouped PRs** (e.g. "cargo minor and patch") bundle many bumps into one
+  merge; `Cargo.lock` changes additionally trigger the `cargo audit` check.
+- **Digest pinning** (`pinDigests: true`) is enforced. Do not accept action
+  updates that drop digest pins, and avoid adopting actions that publish no
+  version tags — their pin would freeze forever (this bit
+  `dtolnay/rust-toolchain`, since replaced with plain rustup + the repo's
+  `rust-toolchain.toml`). The SLSA generator is the only deliberate
+  exemption (see above).
+
 ### Cutting a release
 
 Two-phase, PR-based (main is protected); full details live in `just/ship.just`,
