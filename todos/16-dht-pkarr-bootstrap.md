@@ -27,13 +27,13 @@ All planned work landed (slice 3 stays parked in "Future reference"):
 
 Post-merge follow-ups (not blocking; kept here so they are not lost):
 
-- **[ops, optional]** Re-publish `_ocid.ocid.dev` with hints
+- [ ] **[ops, optional]** Re-publish `_ocid.ocid.dev` with hints
   (`ocictl dns-record ocid.dev --relay <url> --seed <peer>`) — only if
   connect-by-name hints are wanted for the zone; hintless records keep
   verifying everywhere.
-- **[polish, optional]** Render the `pkarr` state in the Podman Desktop
+- [x] **[polish, optional]** Render the `pkarr` state in the Podman Desktop
   dashboard `StatusHeader` (the field ships in `Status`; ocitop already
-  shows a hint when off).
+  shows a hint when off). Done in gh#128.
 
 ## Context
 

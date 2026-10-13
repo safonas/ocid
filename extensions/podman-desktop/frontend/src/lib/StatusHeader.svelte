@@ -26,6 +26,17 @@
         {status.neighbors.length} connected / {status.known_peers} known
       </div>
     </div>
+    {#if status.pkarr === 'off'}
+      <div class="card">
+        <div class="label">Discovery</div>
+        <div
+          class="value"
+          title='pkarr = "off" in config.toml — this daemon publishes no address to the DHT and cannot resolve bare keys (did:key / hex); connect needs a ticket, DNS hints, or mDNS.'
+        >
+          pkarr off — bare-key dial disabled
+        </div>
+      </div>
+    {/if}
     <div class="card">
       <div class="label">Releases</div>
       <div class="value">{status.releases}</div>
