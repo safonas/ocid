@@ -60,6 +60,43 @@ Managed by `.pre-commit-config.yaml`.
   OpenSSF Scorecard files a "Pinned-Dependencies" alert for it — that alert is expected and should
   be dismissed as *won't fix* with a reference to this note.
 
+### Cutting a release
+
+Two-phase, PR-based (main is protected); full details live in `just/ship.just`,
+but this section is self-sufficient. Both recipes prompt for confirmation —
+pipe `yes |` when running non-interactively.
+
+**Phase 1 — `just cut-release <ver>`** (e.g. `0.9.0-rc.1`; leading `v` optional):
+
+- Enforces a clean tree, `github` remote, and that `v<ver>` / `release/<ver>` don't exist.
+- Cuts `release/<ver>` from the fetched `github/main` tip — local `main` is
+  never touched, so it may run from any clean worktree. Note it switches the
+  invoking worktree onto the release branch before CI; don't switch branches
+  in that worktree until it finishes.
+- Runs `just ci`, bumps the version in `Cargo.toml` + `Cargo.lock` +
+  `extensions/podman-desktop/package.json` + its `package-lock.json` (only
+  these four files are committed), pushes, opens the "Release v<ver>" PR, and
+  STOPS.
+- Merge the PR with `gh pr merge --rebase` — a ruleset blocks merge commits
+  on main.
+
+**Phase 2 — `just publish-release <ver>`** (after the PR merges):
+
+- Must run from a checkout where local `main` lives (it checks out and
+  ff-pulls main; in a worktree setup that is the primary checkout — linked
+  worktrees cannot check main out).
+- Tags `v<ver>` on main, pushes the tag to `github` and `rad`, creates a
+  DRAFT GitHub release, dispatches `slsa.yml` (workflow from main, build
+  from the tag), and watches it: CI attaches binaries, .deb/.rpm and SLSA
+  provenance, then publishes the release as its last step.
+- Pre-release versions (any `-suffix`, e.g. `-rc.1`, `-alpha.2`) skip the
+  Homebrew tap and carry the GitHub prerelease flag; full versions also
+  update the tap (formula template `packaging/brew/ocid.rb`).
+- Idempotent/resumable: safe to re-run after a mid-flight failure. Recovery
+  recipes: `just republish <ver>` (re-run SLSA against the existing draft),
+  `just republish-image <ver>` (rebuild the extension OCI image,
+  ghcr.io/safonas/ocid-extension:<tag> + `:testing`).
+
 ## Model routing & cost guidelines
 
 - When configuring agents or invoking sub-tasks, default to cheaper/faster models for repetitive tasks (e.g. searching, file exploration, formatting, simple edits, reading error messages).
