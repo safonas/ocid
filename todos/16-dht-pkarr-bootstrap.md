@@ -8,22 +8,32 @@
 
 ## Status
 
-**Design approved; slices 1 + 2 implemented and verified (one branch, PR
-gh#123) — including a live `E2E_ONLINE=1` run of the pkarr path.**
-Target release: **0.9.0** (after 0.8.0 final lands on main).
+**MERGED to main** 2026-10-12 — gh#123 (`8df615ee`); ships in **0.9.0**.
+Verified end to end: 125/125 e2e legs with `E2E_ONLINE=1` (CI runs the
+119 offline legs; the online leg is local-only by design).
 
-Implementation slices:
+All planned work landed (slice 3 stays parked in "Future reference"):
 
 - **Slice 1** — connect by bare key: `ocictl connect <did:key | 64-hex>`,
   same for `POST /_ocid/peers` and `ocid --peer`; explicit `pkarr` config
-  + status surface. **Implemented.**
+  + status surface. **Merged.**
 - **Slice 2** — DNS record extension: optional `relay=`/`seed=` fields
   (v=ocid1 kept, spec overwritten in place — exactly one record exists in
   the world, the publisher re-publishes), `ocictl connect <domain>`,
   `ocictl dns-record --relay/--seed`, dnsmasq e2e leg (offline, node with
   mDNS+pkarr off reaches the publisher through the signed hints and the
   seed introducer), opt-in `E2E_ONLINE=1` leg for live pkarr (local runs
-  only, never CI). **Implemented.**
+  only, never CI). **Merged.**
+
+Post-merge follow-ups (not blocking; kept here so they are not lost):
+
+- **[ops, optional]** Re-publish `_ocid.ocid.dev` with hints
+  (`ocictl dns-record ocid.dev --relay <url> --seed <peer>`) — only if
+  connect-by-name hints are wanted for the zone; hintless records keep
+  verifying everywhere.
+- **[polish, optional]** Render the `pkarr` state in the Podman Desktop
+  dashboard `StatusHeader` (the field ships in `Status`; ocitop already
+  shows a hint when off).
 
 ## Context
 
@@ -32,10 +42,11 @@ Two facts make this cheap:
 1. **iroh already does pkarr for us.** Every ocid endpoint is built with
    `presets::N0`, which installs `PkarrPublisher::n0_dns()` +
    `PkarrResolver::n0_dns()`: the daemon publishes its signed endpoint
-   address (relay URL + direct addresses) to n0.computer's pkarr endpoint,
-   which re-publishes into the BitTorrent mainline DHT; and it resolves any
-   bare `EndpointId` the same way. So "dial by bare key" is plumbing: we
-   currently only accept tickets, never bare ids.
+   address (the home relay URL — IPs stay private; a relay-disabled
+   dialer therefore cannot use bare-key lookups) to n0.computer's pkarr
+   endpoint, which re-publishes into the BitTorrent mainline DHT; and it
+   resolves any bare `EndpointId` the same way. So "dial by bare key" is
+   plumbing: we currently only accept tickets, never bare ids.
 2. **The DNS record (02) already proves which key owns a name.** It just
    carries no reachability. Adding optional hints to the same signed record
    makes `ocictl connect images.example.com` work offline of any ticket.
