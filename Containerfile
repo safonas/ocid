@@ -11,7 +11,7 @@
 # (Chainguard).
 ARG BUILDER_IMAGE=cgr.dev/chainguard/rust@sha256:07de6b9b6e2ea5a2927243eef053260abcdaaed4a46bb7735f7456c432ace8af
 # Wolfi rolling base (re-pin regularly for fresh security fixes).
-ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:256c88bb066424045021090932d50be93c8e3f2ce3586707702a401b146f3e43
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base:latest@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7
 # Reproducible layer timestamps: the release flow passes the tag commit time
 # via --build-arg; this default is the project initial commit epoch.
 ARG SOURCE_DATE_EPOCH=1789090756
