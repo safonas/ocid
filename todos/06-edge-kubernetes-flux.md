@@ -19,9 +19,14 @@ adds signed releases, publisher identity, and retention windows.
     mTLS gate in front of `/v2`) — unblocks the "no auth on registry"
     limitation for this deployment shape
 - Flux integration path:
-  - document `OCIRepository` / `ImageRepository` pointing at the ocid
-    registry service; verify Flux's auth and tag/digest semantics against
-    signed release records
+  - ~~`OCIRepository` pointing at the ocid registry service~~ — **proven
+    2026-10-31**: Flux v2.10 pulls OCI artifacts from the in-cluster ocid
+    Service (`insecure: true`, plain HTTP) with zero ocid changes; artifacts
+    pushed on the host replicate via `follow` and are deployed by a
+    `Kustomization` — see todo 16 Status. Still to verify: Flux auth options
+    and digest-pin semantics against signed release records.
+  - document `ImageRepository` (image pulls, not just artifacts) pointing at
+    the ocid registry service
   - optionally a small notifier: on release announcement, ping Flux's
     image-update automation so deployments roll on publish, not on poll
 - Ship one reference topology end-to-end (CI publishes → gateway follows →
