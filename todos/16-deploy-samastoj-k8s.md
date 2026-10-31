@@ -6,6 +6,51 @@
 > Flux-consumes-ocid stories: this deployment *hosts* ocid, it doesn't pull
 > through it.
 
+## Status: DONE 2026-10-31 — daemon deployed, host↔cluster P2P live, Flux consumes ocid
+
+As-built on samastoj `main` (commits `e480f7c`, `315a1d9`/`96c5267`, `ff1756f`, `7a98334`):
+
+- **Daemon in cluster:** `kubernetes/apps/base/ocid/` — Namespace, 50Gi PVC
+  (`standard`), Deployment, ClusterIP Service on 5050. Image
+  `localhost/ocid-daemon:ext` (this repo's `Containerfile` daemon stage, built
+  via `just ext daemon-image`), imported into minikube with
+  `podman save localhost/ocid-daemon:ext | podman exec -i minikube ctr -n k8s.io images import -`
+  (`minikube image load` cannot see the rootless podman image store).
+- **Onboarding = follow of the host via ticket:** ConfigMap `ocid-config`
+  carries the host's `ocictl ticket` + `policy.toml` with
+  `[[follow]] publisher = <host-id>`; the pod runs `ocid --peer <ticket>`
+  (trailing newline stripped in a `/bin/sh -c` wrapper). Identity
+  (`secret.key`) is generated inside the PVC on first start — no secrets in
+  git, no SOPS. Verified both directions: cluster `/_ocid/status` shows
+  `neighbors: [<host-id>]`, `follows: [<host-id> [latest]]`; host
+  `ocictl peers` lists the cluster node as neighbor.
+- **Flux consumes ocid (06's OCIRepository story, proven):**
+  `clusters/local/oci-apps.yaml` adds `OCIRepository hugo`
+  (`oci://ocid.ocid.svc:5050/<host-id>/hugo`, `insecure: true` — in-cluster
+  ocid serves plain HTTP on the ClusterIP Service) + `Kustomization hugo-oci`
+  (`path: ./`). Push flow on the host: `just push-oci hugo v1`
+  (`flux push artifact oci://127.0.0.1:5050/hugo:v1 --insecure-registry`;
+  the host registry is self-signed TLS). The host-follow replicates the
+  artifact to the cluster ocid; Flux pulls it and deploys. Verified
+  end-to-end, including re-pushing the same tag with a new digest →
+  cluster ocid serves the new manifest → Flux rolls the new revision.
+  Reference app: hugo blog, source in `kubernetes/oci/hugo/`, public at
+  `blog.salera.app` (azguard Caddy, no auth), private via tailscale Ingress.
+- **Zero ocid code changes were needed** for ocid to act as a Flux OCI
+  registry: oras/flux push+pull worked first try against the existing
+  `/v2/` surface (monolithic + chunked uploads, tags/list, HEAD/GET
+  manifests, Range blob GETs).
+
+### Still open from the plan below
+
+- §1: published `ghcr.io/safonas/ocid` daemon image + workflow + Flux image
+  automation — today the cluster runs a local-only image.
+- §2: `scripts/e2e-k8s.sh` + `just k8s-e2e`.
+- PodMonitor + `ocid.felis-ule.ts.net` ts-ingress (registry stays
+  cluster-internal only — correct per 03).
+- containerd mirror pulls *through* ocid on minikube.
+- Public exposure behind auth (03) — deliberately not done.
+
 ## Context
 
 [samastoj](https://codeberg.org/safonas/samastoj) is the homelab GitOps repo
@@ -145,13 +190,13 @@ Deployment shape (essentials):
 
 ## Follow-ups (out of scope here)
 
-- P2P host↔cluster e2e leg (host daemon + ticket + follow).
+- ~~P2P host↔cluster e2e leg (host daemon + ticket + follow)~~ — **done**, see Status above.
+- ~~Flux `OCIRepository` consuming ocid~~ — **done** (hugo-oci), see Status above; that was the easy half of 06.
 - Prometheus target assertion via the monitoring API.
-- containerd mirror pulls *through* ocid on minikube (the real 06 story:
-  `OCIRepository`/`ImageRepository` consuming ocid, insecure-registry or
-  hosts.toml config).
+- containerd mirror pulls *through* ocid on minikube (the rest of the 06
+  story: `ImageRepository`/hosts.toml against the ocid registry).
 - Public exposure behind auth (03) + Caddy/HTTPRoute via terraform
-  `public_apps`.
+  `public_endpoints`.
 
 ## Why this priority
 
