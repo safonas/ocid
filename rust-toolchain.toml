@@ -1,5 +1,5 @@
 [toolchain]
-channel = "1.99.0"
+channel = "1.99.1"
 profile = "minimal"
 # Installed automatically together with the toolchain wherever rustup is in
 # charge (GitHub runners); keeps CI and local rustup setups in sync.
