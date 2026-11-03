@@ -197,6 +197,17 @@ ci: volumes
 hooks:
     pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push
 
+# Merge open Renovate PRs sequentially (rebase onto main, wait for the four
+# required checks, rebase-merge; PRs failing checks are skipped and listed).
+# Pass PR numbers to merge only those: `just renovate-merge 154 155`.
+# Output is teed to .dev/merge-renovate.log (last run wins).
+[group('dev')]
+renovate-merge *NUMBERS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p .dev
+    bash {{ justfile_directory() }}/scripts/merge-renovate-prs.sh {{ NUMBERS }} 2>&1 | tee .dev/merge-renovate.log
+
 # Build the docs site locally, strict — the same build the Pages deploy runs
 # (uv on the host; the venv lands in the git-ignored .docs-venv at the root).
 [group('docs')]

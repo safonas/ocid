@@ -48,6 +48,10 @@ if [ ! -d "$DIR/.git" ]; then
   git clone --quiet --filter=blob:none "https://github.com/$REPO" "$DIR" || { echo "CLONE FAILED"; exit 1; }
 fi
 cd "$DIR" || exit 1
+# Fetch over HTTPS (public repo), push over SSH: the gh OAuth token lacks
+# `workflow` scope, so HTTPS pushes of branches touching .github/workflows/*
+# are rejected (#151 lesson).
+git remote set-url --push origin "[EMAIL]:$REPO.git"
 git config user.name "$(gh api user --jq .login)"
 git config user.email "[EMAIL]"
 git fetch --quiet origin main --force --prune
