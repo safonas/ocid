@@ -31,14 +31,65 @@
     },
     {
       "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest"],
+      "matchPackageNames": ["!slsa-framework/slsa-github-generator"],
+      "description": "One PR for all workflow action digest re-pins; SLSA is excluded (pinned by tag, see rule below).",
+      "groupName": "actions digests"
+    },
+    {
+      "matchManagers": ["github-actions"],
       "matchPackageNames": ["slsa-framework/slsa-github-generator"],
       "description": "The SLSA generator must be called by tag ref (it resolves its verified builder binary by tag); SHA pinning breaks it. See upstream RENOVATE.md.",
       "pinDigests": false
     },
     {
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "description": "One PR for all container image tag updates (Containerfiles, justfiles, workflows).",
+      "groupName": "docker minor and patch"
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest"],
+      "description": "One PR for all container image digest re-pins; majors stay individual.",
+      "groupName": "docker digests"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "description": "One PR for extension npm minor/patch updates.",
+      "groupName": "npm minor and patch"
+    },
+    {
       "matchManagers": ["pep621"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "python minor and patch"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "description": "Label PRs with the affected component.",
+      "addLabels": ["ci"]
+    },
+    {
+      "matchFileNames": [".github/workflows/**"],
+      "addLabels": ["ci"]
+    },
+    {
+      "matchDatasources": ["docker"],
+      "addLabels": ["packaging"]
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["extensions/podman-desktop/**"],
+      "addLabels": ["extension"]
+    },
+    {
+      "matchManagers": ["cargo"],
+      "addLabels": ["rust"]
+    },
+    {
+      "matchManagers": ["pep621"],
+      "addLabels": ["python:uv"]
     }
   ]
 }
