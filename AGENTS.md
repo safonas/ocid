@@ -122,6 +122,35 @@ pipe `yes |` when running non-interactively.
   `just republish-image <ver>` (rebuild the extension OCI image,
   ghcr.io/safonas/ocid-extension:<tag> + `:testing`).
 
+## Documentation updates
+
+The GitHub Pages site (ocid.dev, MkDocs in `docs/`) is the product
+documentation and `README.md` is the front door. Docs are part of the change
+they describe — never a follow-up PR:
+
+- **Same PR, always.** A PR that changes user-visible behavior (CLI flag or
+  command, `config.toml`/`policy.toml` key, `/_ocid` endpoint/DTO/SSE event,
+  extension feature, ocitop surface, on-disk layout, naming or trust rules)
+  includes the matching docs update — or states why not ("no user-visible
+  change"). The PR template's docs checkbox is the acceptance criterion.
+- **Where it goes:** CLI → `docs/reference/cli.md` (+ the README CLI block);
+  config/policy keys → `docs/reference/config.md`; `/_ocid` surface →
+  `docs/reference/api.md`; extension → `docs/guides/podman-desktop-extension.md`;
+  ocitop → `docs/guides/ocitop.md`; DNS records, naming, trust →
+  `docs/dns-publisher-names.md` + `docs/architecture/*.md` (+ `docs/DESIGN.md`
+  for rationale); defaults and disk layout → `docs/architecture/data-model.md`;
+  new flows → `docs/architecture/workflows.md`. New pages must be added to
+  the `nav` in `docs/mkdocs.yml`.
+- **Acceptance criteria:** feature tasks (`todos/*.md`, gh issues) list a
+  docs criterion — which pages change, or "no user-visible change". A feature
+  is not done until its docs are.
+- **Verify before pushing:** `just docs` (host `uv`; runs the same strict
+  build CI deploys). `--strict` means zero warnings — broken links/anchors
+  fail the deploy. Brand-new pages need one commit before the
+  git-revision-date plugins see them, otherwise the strict build aborts.
+- Docs updates deploy on push to main via `deploy-docs.yml` (paths:
+  `docs/**`, `Cargo.toml`, the workflow itself).
+
 ## Model routing & cost guidelines
 
 - When configuring agents or invoking sub-tasks, default to cheaper/faster models for repetitive tasks (e.g. searching, file exploration, formatting, simple edits, reading error messages).

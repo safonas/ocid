@@ -100,29 +100,32 @@ classDiagram
 ocid stores all data on disk in the following structure under `$OCID_HOME`:
 
 ```
-$OCID_HOME/
-├── blobs/                          # iroh-blobs FsStore (content-addressed by BLAKE3)
-│   └── <blake3-hash>/              # Raw blob data
+$OCID_HOME/                # default: XDG data home (~/.local/share/ocid);
+                           # a pre-existing legacy ~/.ocid keeps being used
+├── secret.key                    # Ed25519 secret key (hex, mode 0600)
+├── config.toml                   # Daemon configuration
+├── policy.toml                   # Retention policy
+├── peers.json                    # Known peer addresses (bootstrap)
+├── dns-pins.json                 # TOFU-pinned DNS publisher names
+├── tls/                          # Self-signed CA + server cert (tls = "auto")
+├── blobs/                        # iroh-blobs FsStore (content-addressed by BLAKE3)
+│   └── <blake3-hash>/            # Raw blob data
 ├── index/
 │   ├── digests/
-│   │   └── <sha256>.json           # BlobRef (maps SHA256 → BLAKE3)
+│   │   └── <sha256>.json         # BlobRef (maps SHA256 → BLAKE3)
 │   ├── releases/
 │   │   └── <publisher>/
 │   │       └── <name>/
-│   │           └── <tag>.json      # Release (signed JSON)
+│   │           └── <tag>.json    # Release (signed JSON)
 │   └── referrers/
 │       └── <subject-hex>/
-│           └── <hex>.json          # Referrer (for the referrers API)
-├── config.toml                     # Daemon configuration
-├── policy.toml                     # Retention policy
-├── identity.key                    # Secret key (Ed25519)
-├── identity.pub                    # Public key (Ed25519)
-└── dns-pins.json                   # TOFU-pinned DNS publisher names
+│           └── <hex>.json        # Referrer (for the referrers API)
+└── uploads/                      # In-progress registry uploads
 ```
 
 ### Example
 
-For a release `z6MkqRYqQ.../app:1.0` with:
+For a release `<publisher-hex>/app:1.0` with:
 - Manifest SHA256: `sha256:abc123...`
 - Manifest BLAKE3: `blake3:def456...`
 - Layer SHA256: `sha256:789xyz...`
@@ -139,10 +142,10 @@ $OCID_HOME/
 │   │   ├── abc123.json  # { digest_sha256: "sha256:abc123...", hash_blake3: "blake3:def456...", size: 1024, media_type: "application/vnd.oci.image.manifest.v1+json" }
 │   │   └── 789xyz.json  # { digest_sha256: "sha256:789xyz...", hash_blake3: "blake3:uvw123...", size: 2048, media_type: "application/vnd.oci.image.layer.v1.tar+gzip" }
 │   └── releases/
-│       └── z6MkqRYqQ.../
+│       └── <publisher-hex>/
 │           └── app/
 │               └── 1.0.json  # Signed Release JSON
-└── identity.key
+└── secret.key
 ```
 
 ---
@@ -165,8 +168,8 @@ flowchart TD
 
 | Key Format | Usage | Example |
 |------------|-------|---------|
-| Hex (64 chars) | Registry paths, gossip topics | `z6MkqRYqQ...` |
-| `did:key:` | CLI display, DID | `did:key:z6MkqRYqQ...` |
+| Hex (64 chars) | Registry paths, gossip topics | `3f9a…c1` |
+| `did:key:` | CLI display, tickets | `did:key:z6Mk…` |
 | Raw bytes | Signing, verification | `[u8; 32]` |
 
 ### Naming Resolution
@@ -190,22 +193,24 @@ flowchart TD
 
 | Repository Path | Resolved Publisher | Resolved Name | Notes |
 |-----------------|--------------------|---------------|-------|
-| `z6MkqRYqQ.../app:1.0` | `z6MkqRYqQ...` | `app` | Explicit hex publisher |
-| `images.example.com/app:1.0` | `z6MkqRYqQ...` (from DNS) | `app` | DNS publisher name |
+| `3f9a…c1/app:1.0` | `3f9a…c1` | `app` | Explicit hex publisher |
+| `images.example.com/app:1.0` | `3f9a…c1` (from DNS) | `app` | DNS publisher name |
 | `myapp:1.0` | `me` | `myapp` | Implicit self |
-| `alias/app:1.0` | `z6MkqRYqQ...` (from alias) | `app` | Publisher alias |
+| `alias/app:1.0` | `3f9a…c1` (from alias) | `app` | Publisher alias |
 
 #### DNS Publisher Names
 
 A domain name (e.g., `images.example.com`) can stand in for the hex publisher ID via a **signed TXT record** at `_ocid.<zone>`:
 
 ```
-_ocid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> sig=<128-hex>"
+_ocid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> [relay=<url>] [seed=<64-hex>] sig=<128-hex>"
 ```
 
 - **`k`**: The publisher's hex-encoded Ed25519 public key.
 - **`ts`**: Unix timestamp (seconds) when the record was created.
-- **`sig`**: Ed25519 signature by the key over the canonical payload `ocid1 <zone> <k> <ts>`.
+- **`relay` (optional)**: A relay URL the publisher is reachable through — a signed dial hint.
+- **`seed` (optional)**: An introducer peer that carries the publisher's address in gossip.
+- **`sig`**: Ed25519 signature by the key over the canonical payload `ocid1 <zone> <k> <ts> [<relay>] [<seed>]`.
 
 **Trust Model:**
 - DNS is **untrusted**; the signature is always verified.

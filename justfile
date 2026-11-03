@@ -14,6 +14,7 @@
 #   just shell        interactive shell in the build container
 #   just bin          copy the debug binaries to ./bin/{ocid,ocictl}
 #   just e2e          build, then run scripts/e2e.sh (two nodes on this host; needs podman, curl, jq)
+#   just docs         build the docs site strictly (mkdocs, same as the Pages deploy; needs uv)
 #   just ext-install  npm install for the Podman Desktop extension (wolfi node container)
 #   just ext-build    build the extension (backend dist/ + webview media/)
 #   just ext-check    typecheck the extension (tsc + svelte-check)
@@ -195,6 +196,17 @@ ci: volumes
 [group('dev')]
 hooks:
     pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push
+
+# Build the docs site locally, strict — the same build the Pages deploy runs
+# (uv on the host; the venv lands in the git-ignored .docs-venv at the root).
+[group('docs')]
+docs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd docs
+    export UV_PROJECT_ENVIRONMENT="{{ justfile_directory() }}/.docs-venv"
+    uv sync --frozen
+    uv run mkdocs build --strict --config-file mkdocs.yml
 
 # Build the runtime container image.
 # (Implementation lives in the `packaging` submodule.)
