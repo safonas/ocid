@@ -15,7 +15,7 @@ ocid-core = { path = "crates/ocid-core" }
 # p2p
 iroh = "1.2"
 iroh-base = { version = "1.2", features = ["key"] }
-iroh-blobs = { version = "0.103", features = ["fs-store"] }
+iroh-blobs = { version = "0.104", features = ["fs-store"] }
 iroh-gossip = { version = "0.101", features = ["net"] }
 iroh-tickets = "1"
 iroh-metrics = { version = "1", features = ["metrics"] }
