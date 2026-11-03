@@ -44,7 +44,7 @@ podman push localhost:5050/myapp:1.0
 On **Node A** (publisher):
 ```bash
 # Get a connection ticket for Node B
-ocictl ticket | pbcopy
+ocictl ticket   # copy the printed ticket
 ```
 
 On **Node B** (consumer):
@@ -139,7 +139,7 @@ flowchart TB
 - **Peer-to-Peer Distribution**: Direct sync between peers using iroh.
 - **Signed Releases**: Every release is signed with the publisher’s Ed25519 key.
 - **Content-Addressed Blobs**: Blobs are addressed by SHA256 (OCI) and BLAKE3 (iroh).
-- **Retention Policies**: `follow`, `seed`, `pin` with `last:N`, `full`, or `tags` modes.
+- **Retention Policies**: `follow`, `seed`, `pin` with `latest`, `last:N`, or `full` modes.
 - **DNS Publisher Names**: Use domain names (e.g., `images.example.com`) for publishers.
 - **mDNS Discovery**: Automatically discover other ocid nodes on your LAN.
 - **Relay Support**: NAT traversal via iroh relays (optional).
@@ -165,6 +165,11 @@ flowchart TB
 | [Workflows](architecture/workflows.md) | Publish, replicate, pull, and policy flows |
 | [Trust Model](architecture/trust-model.md) | Security and trust boundaries |
 | [DNS Publisher Names](dns-publisher-names.md) | Human-readable names for publishers |
+| [CLI Reference](reference/cli.md) | `ocid` daemon and `ocictl` commands |
+| [Configuration](reference/config.md) | `config.toml` and `policy.toml` |
+| [HTTP API](reference/api.md) | The `/_ocid` control API and `/v2` registry |
+| [Podman Desktop Extension](guides/podman-desktop-extension.md) | Dashboard and bundled daemon for Podman Desktop |
+| [ocitop](guides/ocitop.md) | Terminal dashboard for the daemon |
 | [Development](development.md) | Building, testing, and security scanning |
 
 ---
@@ -174,6 +179,7 @@ flowchart TB
 - **GitHub**: [safonas/ocid](https://github.com/safonas/ocid)
 - **Discussions**: [GitHub Discussions](https://github.com/safonas/ocid/discussions)
 - **Issues**: [GitHub Issues](https://github.com/safonas/ocid/issues)
+- **Code of Conduct**: [CODE_OF_CONDUCT.md](https://github.com/safonas/ocid/blob/main/CODE_OF_CONDUCT.md)
 - **Matrix**: `#ocid:matrix.org` (coming soon)
 
 ---

@@ -194,8 +194,7 @@ mode = "last:2"
 ref = "app"
 mode = "full"
 
-[[pin]]
-ref = "app:1.0"
+pin = ["app:1.0"]
 ```
 
 ### Policy Workflow
@@ -214,7 +213,7 @@ flowchart LR
     st --> w
     p --> w
 
-    w["Window(publisher, name)<br/>full | last:N | tags"] --> sel["select(known releases)<br/>newest first, tag tie-break"]
+    w["Window(publisher, name)<br/>full | latest | last:N"] --> sel["select(known releases)<br/>newest first, tag tie-break"]
     sel --> keep["wanted set"]
 
     keep --> enforce["enforce_window"]
@@ -229,7 +228,6 @@ flowchart LR
 | `latest` | Keep the newest release | `mode = "latest"` (same as `last:1`) |
 | `last:N` | Keep the N newest releases | `mode = "last:2"` |
 | `full` | Keep all releases | `mode = "full"` |
-| `tags` | Keep specific tags | `mode = "tags"` (with `tags = ["1.0", "2.0"]`) |
 
 ### Rules
 

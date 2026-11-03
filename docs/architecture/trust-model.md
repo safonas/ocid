@@ -68,27 +68,34 @@ ocid supports **DNS publisher names**, which allow a domain (e.g., `images.examp
 A DNS publisher name is defined by a **signed TXT record** at `_ocid.<zone>`:
 
 ```
-_ocid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> sig=<128-hex>"
+_ocid.images.example.com. 300 IN TXT "v=ocid1 k=<64-hex> ts=<unix> [relay=<url>] [seed=<64-hex>] sig=<128-hex>"
 ```
 
 | Field | Description | Example |
 |-------|-------------|---------|
 | `v` | Version (currently `ocid1`) | `ocid1` |
-| `k` | Publisher’s hex-encoded Ed25519 public key | `z6MkqRYqQ...` |
+| `k` | Publisher’s hex-encoded Ed25519 public key | `3f9a…c1` |
 | `ts` | Unix timestamp (seconds) when the record was created | `1712345678` |
+| `relay` (optional) | A relay URL the publisher is reachable through — a signed dial hint | `https://use1-1.relay.iroh.network` |
+| `seed` (optional) | An introducer peer that carries the publisher’s address in gossip | `9b21…77` |
 | `sig` | Ed25519 signature by the key over the canonical payload | `abc123...` |
 
 ### Signature Payload
 
 The signature covers the **canonical payload**:
 ```
-ocid1 <zone> <k> <ts>
+ocid1 <zone> <k> <ts> [<relay>] [<seed>]
 ```
 
 Example:
 ```
-ocid1 images.example.com z6MkqRYqQ... 1712345678
+ocid1 images.example.com 3f9a…c1 1712345678 https://use1-1.relay.iroh.network 9b21…77
 ```
+
+Hints are covered by the signature (DNS cannot invent or swap them) but can
+go stale until the zone is re-published; peers treat them as best-effort
+dial candidates, never a trust input. See
+[DNS Publisher Names](../dns-publisher-names.md).
 
 ### Trust Model for DNS
 
@@ -239,7 +246,7 @@ flowchart TD
     sweep --> ib["iroh-blobs GC deletes unpinned data"]
 
     %% Annotations
-    click del "https://ocid.dev/reference/api#delete-manifest" _blank
+    click del "https://ocid.dev/reference/api/#delete-manifest" _blank
 ```
 
 ### Implications
@@ -277,7 +284,7 @@ flowchart TD
 ### For Publishers
 
 1. **Keep Your Key Safe**:
-   - The secret key (`identity.key`) is the **root of trust** for your namespace.
+   - The secret key (`secret.key`) is the **root of trust** for your namespace.
    - Back it up securely and **never share it**.
 
 2. **Use DNS Publisher Names Carefully**:

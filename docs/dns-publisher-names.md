@@ -236,7 +236,12 @@ dns = "on"                        # default: on. "off" disables all DNS lookups.
 dns_nameserver = "10.0.0.53"      # optional: custom resolver (IP literal, port defaults to 53).
                                   # default: system resolver. Useful for air-gapped setups.
 dns_max_age_secs = 2592000        # default: 30 days. Records older than this are rejected.
+pkarr = "on"                      # default: on. "off" disables pkarr/mainline-DHT address
+                                  # publishing and lookup — bare-key connects then need
+                                  # tickets, mDNS, or signed hints.
 ```
+
+See [Configuration](reference/config.md) for every `config.toml` key.
 
 ## HTTP API
 

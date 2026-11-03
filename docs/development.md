@@ -24,6 +24,7 @@ just run ARGS    # run the ocid daemon on the host network (state in ./.dev/ocid
 just ctl ARGS    # run ocictl in the builder against the same state
 just shell       # interactive shell in the build container
 just e2e         # build, then run scripts/e2e.sh: two daemons on this host, driven by podman/curl/ocictl
+just docs        # build the GitHub Pages site strictly (uv on the host)
 just ci          # fmt --check, clippy -D warnings, tests, e2e
 just image       # runtime image: podman build -> localhost/ocid:dev
 just pkg         # .deb + .rpm for the host arch into ./dist (via pinned nfpm)
@@ -32,8 +33,12 @@ just brew-local  # test-install working tree through a local private tap
 just ext-install # npm install for the Podman Desktop extension
 just ext-build   # build the extension (backend dist/ + webview media/)
 just ext-check   # typecheck the extension (tsc + svelte-check)
+just ext-test    # unit tests for extension internals (no daemon)
 just ext-smoke   # run the extension client against a throwaway daemon
 just ext-image   # build the extension OCI artifact (for the catalog)
+just ext-daemon-image # build the bundled daemon tarball (bin/ocid-daemon.tar)
+just ext-folder  # assemble a folder for Podman Desktop's local-folder install
+just ext-clean   # remove extension build artifacts and dependencies
 just publish-release VER # automate release: CI checks, bump, tag, GH release, tap update (via PR)
 just hooks       # install git hooks via pre-commit (fmt/clippy on commit, tests on push)
 just clean       # remove target volume, ./bin, ./dist
@@ -52,6 +57,16 @@ Vulnerability scanning runs in CI (`.github/workflows/security.yml`): Trivy
 scans the container image and working tree, and OpenSSF Scorecard reviews the
 repository. See [SECURITY.md](https://github.com/safonas/ocid/blob/main/SECURITY.md) for reporting and local scan
 commands.
+
+## Documentation site
+
+The GitHub Pages site (ocid.dev) is MkDocs living in `docs/`. Docs changes
+belong in the same PR as the behavior they describe — the PR template has a
+docs checkbox, and `AGENTS.md` maps code surfaces to pages (`docs/reference/`
+for the CLI, config and API). `just docs` builds the site locally with
+`--strict` — the same build CI deploys — and fails on broken links or
+anchors. Brand-new pages need one commit before the git-revision-date
+plugins see them, and must be added to the `nav` in `docs/mkdocs.yml`.
 
 ## Runtime container image
 
@@ -114,7 +129,8 @@ only ever advances by fast-forwarding to `github/main`.
 Releases on this repo are immutable once published, which is why the release
 stays a draft until CI has attached every asset. If the CI run fails, fix
 the cause and retry with `just republish <version>` (builds always run from
-the tag, so main having moved on is fine).
+the tag, so main having moved on is fine); `just republish-image <version>`
+re-dispatches the extension OCI image build the same way.
 
 When CI publishes the release, `.github/workflows/brew-drift.yml` asserts
 that the tap formula tracks the latest release and stays green.

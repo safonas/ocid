@@ -473,6 +473,13 @@ The Homebrew formula template lives in `packaging/brew/ocid.rb` — the tap
 * [dns-publisher-names.md](dns-publisher-names.md) — DNS publisher names:
   record format, trust model, publisher/consumer workflows, configuration,
   HTTP API, troubleshooting.
+* The [architecture section](architecture/components.md) — components, data
+  model, workflows, trust model — plus [pitch.md](pitch.md) and
+  [development.md](development.md).
+* Reference: [CLI](reference/cli.md), [configuration](reference/config.md),
+  [HTTP API](reference/api.md).
+* Guides: [Podman Desktop extension](guides/podman-desktop-extension.md),
+  [ocitop](guides/ocitop.md).
 
 ## Deferred
 

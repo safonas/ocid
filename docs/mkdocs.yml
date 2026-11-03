@@ -110,9 +110,7 @@ plugins:
       htmlmin_opts:
         remove_comments: true
 
-# Navigation — only pages that exist (the revamp drafted sections for
-# guides/, reference/, community/ that were never written; add them back
-# as they land).
+# Navigation — pages that exist. Guides/reference grow as content lands.
 nav:
   - Home: index.md
   - Overview:
@@ -125,6 +123,12 @@ nav:
       - Trust Model: architecture/trust-model.md
   - Guides:
       - DNS Publisher Names: dns-publisher-names.md
+      - Podman Desktop Extension: guides/podman-desktop-extension.md
+      - ocitop: guides/ocitop.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Configuration: reference/config.md
+      - HTTP API: reference/api.md
   - Development:
       - Developer Guide: development.md
 
