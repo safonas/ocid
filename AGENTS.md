@@ -16,6 +16,7 @@ and signed release records.
 - `crates/ocitop`: the TUI monitor binary (`ocitop`). Interactive terminal dashboard for daemon status, releases, peers, and real-time SSE events.
 - `extensions/podman-desktop`: the Podman Desktop extension (TypeScript + Svelte). Dashboard over the same `/_ocid` API; build via `just ext-*` recipes (node runs in a container, like cargo).
 - `scripts/e2e.sh`: multi-node end-to-end integration test runner.
+- `scripts/merge-renovate-prs.sh`: merge open Renovate PRs sequentially. The `main` ruleset enforces strict required status checks (branch up to date) + linear history, so each merge stales the remaining branches; the script rebases them onto `main`, force-pushes, waits for the required check-runs on the new head SHA, and rebase-merges. PRs failing required checks are skipped. Never trust the PR API right after a force-push (`headRefOid`/`statusCheckRollup` lag); poll the commit check-runs API instead. cargo-audit failures on `main` are pre-existing RUSTSEC advisories and not a merge blocker.
 - `docs/DESIGN.md`: architectural design, data models, sequences, and trust boundaries.
 
 ## Build and verification environment
