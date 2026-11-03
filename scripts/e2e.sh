@@ -349,7 +349,7 @@ if command -v dnsmasq >/dev/null; then
 
     # Restart A so the hijack leg below cannot be served from the in-memory
     # lookup cache (the pin store is on disk and must survive).
-    kill "$PID_A" 2/dev/null || true; wait "$PID_A" 2>/dev/null || true
+    kill "$PID_A" 2>/dev/null || true; wait "$PID_A" 2>/dev/null || true
     OCID_HOME="$HOME_A" RUST_LOG=ocid=debug,warn "$OCID" --no-relay --listen "$REG_A" >>"$WORK/a.log" 2>&1 &
     PID_A=$!
     require "node A restarted" 15 curl -sf "http://$REG_A/v2/"
@@ -395,7 +395,7 @@ if command -v dnsmasq >/dev/null; then
     out=$(curl -s "http://$REG_A/_ocid/dns/resolve?zone=$ZONE")
     assert_eq "re-resolve pins the new key" "$F" "$(echo "$out" | jq -r .publisher)"
     assert_eq "fresh pin state" "new" "$(echo "$out" | jq -r .state)"
-    kill "$PID_A" 2/dev/null || true; wait "$PID_A" 2>/dev/null || true
+    kill "$PID_A" 2>/dev/null || true; wait "$PID_A" 2>/dev/null || true
     OCID_HOME="$HOME_A" RUST_LOG=ocid=debug,warn "$OCID" --no-relay --listen "$REG_A" >>"$WORK/a.log" 2>&1 &
     PID_A=$!
     require "node A restarted again" 15 curl -sf "http://$REG_A/v2/"
@@ -484,7 +484,7 @@ fi
 # ---------------------------------------------------------------------------
 
 log "ocictl works without a daemon"
-kill "$PID_B" 2/dev/null || true; wait "$PID_B" 2>/dev/null || true; PID_B=
+kill "$PID_B" 2>/dev/null || true; wait "$PID_B" 2>/dev/null || true; PID_B=
 sleep 0.5
 assert_contains "ls offline reads the index" "$(ctl_b ls)" "daemon not running"
 assert_contains "status reports daemon down" "$(ctl_b status 2>&1 || true)" "is not running"
@@ -515,7 +515,7 @@ assert_eq "POST /_ocid/peers with legacy ticket key -> 200" 200 "$code"
 assert_eq "legacy ticket key resolves to A" "$A" "$(jq -r .id "$WORK/alias.json")"
 
 # Restart path: bootstrap --peer with the did:key form.
-kill "$PID_D" 2/dev/null || true; wait "$PID_D" 2>/dev/null || true; PID_D=
+kill "$PID_D" 2>/dev/null || true; wait "$PID_D" 2>/dev/null || true; PID_D=
 sleep 0.5
 OCID_HOME="$HOME_D" RUST_LOG=ocid=info,warn "$OCID" --no-relay --listen "$REG_D" --peer "$A_DID" >"$WORK/d.log" 2>&1 &
 PID_D=$!
@@ -527,6 +527,9 @@ require "D sees A as neighbor (did:key bootstrap)" 20 bash -c "OCID_HOME='$HOME_
 # ---------------------------------------------------------------------------
 
 log "connect by DNS name (relay/seed hints)"
+if ! command -v dnsmasq >/dev/null; then
+    skip "DNS hints leg (dnsmasq not installed; section 6 vars unset)"
+else
 ZONE3="boot.ocid.test"
 C=$(ctl_c whoami | awk '/^id/{print $2}')
 
@@ -564,7 +567,7 @@ sleep 0.5
 # deliberately bogus — hints are best-effort), seed=A as the introducer
 # through whose gossip address exchange D learns C. This also exercises
 # pkarr = "off".
-kill "$PID_D" 2/dev/null || true; wait "$PID_D" 2>/dev/null || true; PID_D=
+kill "$PID_D" 2>/dev/null || true; wait "$PID_D" 2>/dev/null || true; PID_D=
 sleep 0.5
 rm -rf "$HOME_D"
 mkdir -p "$HOME_D"
@@ -596,6 +599,7 @@ require "D is C's gossip neighbor via the seed introducer" 30 \
 # exchanged between D and C.
 ctl_d pull "$ZONE3/alpine:9" >/dev/null \
     && ok "pull by DNS name through the introduced swarm" || fail "pull via DNS name + seed"
+fi
 
 # ---------------------------------------------------------------------------
 # 12. online pkarr discovery (opt-in: E2E_ONLINE=1; NEVER in CI) — the
@@ -625,7 +629,7 @@ if [[ "${E2E_ONLINE:-0}" == "1" ]]; then
     # its config.toml — flip it back before the flag-less restart. A
     # keeps mDNS on (can't see G — G has it off) and pkarr on: G's pkarr
     # record is A's only route to G.
-    kill "$PID_A" 2/dev/null || true; wait "$PID_A" 2>/dev/null || true; PID_A=
+    kill "$PID_A" 2>/dev/null || true; wait "$PID_A" 2>/dev/null || true; PID_A=
     sleep 0.5
     sed -i 's/^relay = .*/relay = "default"/' "$HOME_A/config.toml"
     OCID_HOME="$HOME_A" RUST_LOG=ocid=info,warn "$OCID" --listen "$REG_A" >>"$WORK/a.log" 2>&1 &
@@ -660,7 +664,7 @@ PYEOF
     require "A reaches G as neighbor via live pkarr" 60 \
         bash -c "curl -s 'http://$REG_A/_ocid/peers' | jq -e '.[] | select(.id==\"$G\") | .neighbor'"
 
-    kill "$PID_G" 2/dev/null || true; wait "$PID_G" 2>/dev/null || true; PID_G=
+    kill "$PID_G" 2>/dev/null || true; wait "$PID_G" 2>/dev/null || true; PID_G=
 else
     skip "online pkarr discovery (opt-in: E2E_ONLINE=1; not run in CI)"
 fi
