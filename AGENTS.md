@@ -16,6 +16,7 @@ and signed release records.
 - `crates/ocitop`: the TUI monitor binary (`ocitop`). Interactive terminal dashboard for daemon status, releases, peers, and real-time SSE events.
 - `extensions/podman-desktop`: the Podman Desktop extension (TypeScript + Svelte). Dashboard over the same `/_ocid` API; build via `just ext-*` recipes (node runs in a container, like cargo).
 - `scripts/e2e.sh`: multi-node end-to-end integration test runner.
+- `scripts/merge-renovate-prs.sh`: merge open Renovate PRs sequentially. The `main` ruleset enforces strict required status checks (branch up to date) + linear history, so each merge stales the remaining branches; the script rebases them onto `main`, force-pushes, waits for the required check-runs on the new head SHA, and rebase-merges. PRs failing required checks are skipped. Never trust the PR API right after a force-push (`headRefOid`/`statusCheckRollup` lag); poll the commit check-runs API instead. cargo-audit failures on `main` are pre-existing RUSTSEC advisories and not a merge blocker.
 - `docs/DESIGN.md`: architectural design, data models, sequences, and trust boundaries.
 
 ## Build and verification environment
@@ -121,6 +122,35 @@ pipe `yes |` when running non-interactively.
   recipes: `just republish <ver>` (re-run SLSA against the existing draft),
   `just republish-image <ver>` (rebuild the extension OCI image,
   ghcr.io/safonas/ocid-extension:<tag> + `:testing`).
+
+## Documentation updates
+
+The GitHub Pages site (ocid.dev, MkDocs in `docs/`) is the product
+documentation and `README.md` is the front door. Docs are part of the change
+they describe — never a follow-up PR:
+
+- **Same PR, always.** A PR that changes user-visible behavior (CLI flag or
+  command, `config.toml`/`policy.toml` key, `/_ocid` endpoint/DTO/SSE event,
+  extension feature, ocitop surface, on-disk layout, naming or trust rules)
+  includes the matching docs update — or states why not ("no user-visible
+  change"). The PR template's docs checkbox is the acceptance criterion.
+- **Where it goes:** CLI → `docs/reference/cli.md` (+ the README CLI block);
+  config/policy keys → `docs/reference/config.md`; `/_ocid` surface →
+  `docs/reference/api.md`; extension → `docs/guides/podman-desktop-extension.md`;
+  ocitop → `docs/guides/ocitop.md`; DNS records, naming, trust →
+  `docs/dns-publisher-names.md` + `docs/architecture/*.md` (+ `docs/DESIGN.md`
+  for rationale); defaults and disk layout → `docs/architecture/data-model.md`;
+  new flows → `docs/architecture/workflows.md`. New pages must be added to
+  the `nav` in `docs/mkdocs.yml`.
+- **Acceptance criteria:** feature tasks (`todos/*.md`, gh issues) list a
+  docs criterion — which pages change, or "no user-visible change". A feature
+  is not done until its docs are.
+- **Verify before pushing:** `just docs` (host `uv`; runs the same strict
+  build CI deploys). `--strict` means zero warnings — broken links/anchors
+  fail the deploy. Brand-new pages need one commit before the
+  git-revision-date plugins see them, otherwise the strict build aborts.
+- Docs updates deploy on push to main via `deploy-docs.yml` (paths:
+  `docs/**`, `Cargo.toml`, the workflow itself).
 
 ## Model routing & cost guidelines
 
