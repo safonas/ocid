@@ -369,7 +369,7 @@ if command -v dnsmasq >/dev/null; then
     OCID_HOME="$HOME_S" "$CTL" init >/dev/null
     OLD_TS=$(( $(date +%s) - 32*24*3600 ))
     REC_S=$(OCID_HOME="$HOME_S" "$CTL" dns-record --ts "$OLD_TS" "$ZONE2" | awk -F'"' '/IN TXT/{print $2}')
-    kill "${DNSPID:-}" 2>/dev/null; wait "${DNSPID:-}" 2>/dev/null || true
+    if [[ -n "${DNSPID:-}" ]]; then kill "$DNSPID" 2>/dev/null || true; wait "$DNSPID" 2>/dev/null || true; fi
     dnsmasq --no-daemon --listen-address=127.0.0.1 --port="$DNS_PORT" --no-hosts --no-resolv \
         --txt-record="_ocid.$ZONE,$REC_F" --txt-record="_ocid.$ZONE2,$REC_S" >"$WORK/dnsmasq.log" 2>&1 &
     DNSPID=$!
@@ -545,7 +545,7 @@ assert_contains "hint record spans two TXT strings" "$REC_C_TXT" '" "'
 REC_C_DNSMASQ=$(printf '%s' "$REC_C_TXT" | sed 's/" "/,/g; s/"//g')
 
 # Serve it from dnsmasq (multi-string TXT: chunks comma-separated).
-kill "${DNSPID:-}" 2>/dev/null; wait "${DNSPID:-}" 2>/dev/null || true
+if [[ -n "${DNSPID:-}" ]]; then kill "$DNSPID" 2>/dev/null || true; wait "$DNSPID" 2>/dev/null || true; fi
 dnsmasq --no-daemon --listen-address=127.0.0.1 --port="$DNS_PORT" --no-hosts --no-resolv \
     --txt-record="_ocid.$ZONE,$REC_F" --txt-record="_ocid.$ZONE2,$REC_S" \
     --txt-record="_ocid.$ZONE3,$REC_C_DNSMASQ" >"$WORK/dnsmasq.log" 2>&1 &
