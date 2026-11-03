@@ -68,7 +68,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@tsconfig/node24": "^24.0.0",
     "@tsconfig/svelte": "^5.0.4",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.0.0",
     "@types/qrcode": "^1.5.5",
     "@typescript/native": "npm:typescript@~7.0.0",
     "qrcode": "^1.5.4",
