@@ -15,8 +15,8 @@ ocid-core = { path = "crates/ocid-core" }
 # p2p
 iroh = "1.2"
 iroh-base = { version = "1.2", features = ["key"] }
-iroh-blobs = { version = "0.104", features = ["fs-store"] }
-iroh-gossip = { version = "0.101", features = ["net"] }
+iroh-blobs = { version = "0.105", features = ["fs-store"] }
+iroh-gossip = { version = "0.102", features = ["net"] }
 iroh-tickets = "1"
 iroh-metrics = { version = "1", features = ["metrics"] }
 iroh-mdns-address-lookup = "0.6"
@@ -28,7 +28,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 axum = { version = "0.8", features = ["http1", "json", "query"] }
-axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+axum-server = { version = "0.9", features = ["tls-rustls-no-provider"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 hickory-resolver = "0.26"
