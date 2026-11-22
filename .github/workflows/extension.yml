@@ -131,7 +131,7 @@ jobs:
             -e GHCR -e TAG \
             -v "$PWD":/src \
             -v "$RUNNER_TEMP/ghcr-auth.json":/auth.json:ro \
-            "quay.io/buildah/stable:v1.43.5@sha256:7263d9aa9395ecac7d7416623629ceccb0d701d05395f6abd67b250b3408abf6" \
+            "quay.io/buildah/stable:v1.46.1@sha256:72b49c4af6c63850200cc8809d513691d61ceb440358faff305b540c4b9fc038" \
             sh -c '
               set -euo pipefail
               cd /src
